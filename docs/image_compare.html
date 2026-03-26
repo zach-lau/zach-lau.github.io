@@ -1,0 +1,586 @@
+---
+title: Image Compare
+permalink: /image_compare
+---
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Image Diff Viewer</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600&family=Syne:wght@400;700;800&display=swap');
+
+  :root {
+    --bg: #0e0e10;
+    --surface: #17171a;
+    --panel: #1c1c20;
+    --border: #2a2a2f;
+    --muted: #555560;
+    --text: #e8e8ed;
+    --text-dim: #888890;
+    --dne: #ff6b6b;
+    --radius: 6px;
+    --mono: 'JetBrains Mono', monospace;
+    --display: 'Syne', sans-serif;
+  }
+
+  .pane-accent-0 { --pane-color: #7ee8a2; }
+  .pane-accent-1 { --pane-color: #5b8dee; }
+  .pane-accent-2 { --pane-color: #f6a35c; }
+  .pane-accent-3 { --pane-color: #e06cbb; }
+  .pane-accent-4 { --pane-color: #60d4e4; }
+  .pane-accent-5 { --pane-color: #b8a4f8; }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+
+  .logo {
+    font-family: var(--display);
+    font-weight: 800;
+    font-size: 15px;
+    letter-spacing: -0.5px;
+    color: #7ee8a2;
+    white-space: nowrap;
+  }
+  .logo span { color: var(--text-dim); font-weight: 400; }
+
+  .nav-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+  }
+
+  .idx-display {
+    font-size: 12px;
+    color: var(--text-dim);
+    min-width: 76px;
+    text-align: center;
+  }
+
+  button {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 5px 11px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s;
+  }
+  button:hover:not(:disabled) { background: var(--border); border-color: var(--muted); }
+  button:active:not(:disabled) { background: var(--muted); }
+  button:disabled { opacity: 0.3; cursor: default; }
+
+  #btn-add-pane {
+    background: transparent;
+    border: 1px dashed var(--muted);
+    color: var(--text-dim);
+    font-size: 11px;
+    padding: 4px 10px;
+  }
+  #btn-add-pane:hover:not(:disabled) { border-color: var(--text-dim); color: var(--text); background: transparent; }
+
+  kbd {
+    background: var(--border);
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+
+  .workspace {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  .divider {
+    background: var(--border);
+    width: 1px;
+    flex-shrink: 0;
+  }
+
+  .pane {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .pane-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+
+  .pane-label {
+    font-family: var(--display);
+    font-weight: 800;
+    font-size: 11px;
+    color: var(--pane-color);
+    width: 20px;
+    flex-shrink: 0;
+    text-align: center;
+  }
+
+  .folder-btn {
+    flex: 1;
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11px;
+    color: var(--text-dim);
+    padding: 3px 8px;
+  }
+  .folder-btn.has-folder { color: var(--text); }
+
+  .file-count {
+    font-size: 10px;
+    color: var(--muted);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .remove-btn {
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    font-size: 13px;
+    padding: 2px 4px;
+    line-height: 1;
+    flex-shrink: 0;
+    border-radius: 3px;
+  }
+  .remove-btn:hover:not(:disabled) { color: var(--dne); background: transparent; }
+
+  .image-area {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    position: relative;
+    padding: 12px;
+    background: var(--bg);
+  }
+
+  .image-area img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border-radius: 4px;
+    display: block;
+    cursor: zoom-in;
+    transition: opacity 0.12s;
+  }
+  .image-area img.loading { opacity: 0; }
+
+  .state-msg {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 11px;
+    text-align: center;
+    padding: 12px;
+  }
+  .state-msg .icon { font-size: 26px; line-height: 1; }
+  .state-msg.dne { color: var(--dne); }
+
+  .filename-bar {
+    position: absolute;
+    bottom: 7px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.72);
+    backdrop-filter: blur(6px);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 2px 9px;
+    font-size: 10px;
+    color: var(--text-dim);
+    pointer-events: none;
+    white-space: nowrap;
+    max-width: calc(100% - 20px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .file-list-bar {
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+    display: flex;
+    overflow-x: auto;
+    gap: 4px;
+    padding: 5px 8px;
+    max-height: 46px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  .thumb-pill {
+    flex-shrink: 0;
+    padding: 2px 9px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    cursor: pointer;
+    font-size: 10px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+    transition: background 0.1s, color 0.1s, border-color 0.1s;
+    white-space: nowrap;
+  }
+  .thumb-pill:hover { border-color: var(--muted); color: var(--text); }
+  .thumb-pill.active {
+    background: var(--pane-color);
+    color: #0e0e10;
+    border-color: transparent;
+    font-weight: 600;
+  }
+  .thumb-pill.ghost { opacity: 0.32; }
+
+  input[type="file"] { display: none; }
+
+  ::-webkit-scrollbar { height: 4px; width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  #zoom-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.92);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 999;
+    cursor: zoom-out;
+  }
+  #zoom-overlay.visible { display: flex; }
+  #zoom-overlay img {
+    max-width: 92vw;
+    max-height: 92vh;
+    object-fit: contain;
+    border-radius: 4px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">diff<span>view</span></div>
+  <button id="btn-add-pane" onclick="addPane()">+ add folder</button>
+  <div class="nav-controls">
+    <button id="btn-prev" disabled>◀ prev</button>
+    <div class="idx-display" id="idx-display">– / –</div>
+    <button id="btn-next" disabled>next ▶</button>
+    <span style="color:var(--border);margin:0 6px">|</span>
+    <kbd>←</kbd><kbd>→</kbd>&nbsp;navigate&nbsp;&nbsp;<kbd>Space</kbd>&nbsp;zoom
+  </div>
+</header>
+
+<div class="workspace" id="workspace"></div>
+
+<div id="zoom-overlay" onclick="closeZoom()">
+  <img id="zoom-img" src="">
+</div>
+
+<script>
+const LABELS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+const NUM_ACCENT_CLASSES = 6;
+
+let panes = [];
+let masterList = [];
+let currentIdx = 0;
+let nextId = 0;
+
+// ── Pane CRUD ─────────────────────────────────────────────────────────────────
+
+function addPane() {
+  const id = nextId++;
+  panes.push({ id, files: {}, names: [], folderName: '' });
+  rebuildAll();
+  renderWorkspace();
+  // Auto-open folder picker for the new pane
+  const inp = document.getElementById(`input-${id}`);
+  if (inp) inp.click();
+}
+
+function removePane(id) {
+  const pane = panes.find(p => p.id === id);
+  if (pane) Object.values(pane.files).forEach(URL.revokeObjectURL);
+  panes = panes.filter(p => p.id !== id);
+  rebuildAll();
+  renderWorkspace();
+}
+
+// ── DOM rendering ─────────────────────────────────────────────────────────────
+
+function renderWorkspace() {
+  const ws = document.getElementById('workspace');
+  ws.innerHTML = '';
+
+  panes.forEach((pane, i) => {
+    if (i > 0) {
+      const div = document.createElement('div');
+      div.className = 'divider';
+      ws.appendChild(div);
+    }
+
+    const label = LABELS[i] || String(i + 1);
+    const accentClass = `pane-accent-${i % NUM_ACCENT_CLASSES}`;
+    const canRemove = panes.length > 1;
+
+    const el = document.createElement('div');
+    el.className = `pane ${accentClass}`;
+    el.id = `pane-el-${pane.id}`;
+    el.innerHTML = `
+      <div class="pane-header">
+        <span class="pane-label">${label}</span>
+        <button class="folder-btn ${pane.folderName ? 'has-folder' : ''}" id="folder-btn-${pane.id}"
+          onclick="openFolder(${pane.id})">${pane.folderName || 'click to open folder…'}</button>
+        <span class="file-count" id="count-${pane.id}">${pane.names.length ? pane.names.length + ' files' : ''}</span>
+        ${canRemove ? `<button class="remove-btn" onclick="removePane(${pane.id})" title="Remove pane">✕</button>` : ''}
+      </div>
+      <div class="image-area" id="img-area-${pane.id}">
+        <div class="state-msg" id="state-${pane.id}">
+          <div class="icon">📁</div>
+          <div>Open a folder to begin</div>
+        </div>
+        <img id="img-${pane.id}" style="display:none" title="Click to zoom" onclick="zoomImg(this.src)">
+        <div class="filename-bar" id="fname-${pane.id}" style="display:none"></div>
+      </div>
+      <div class="file-list-bar ${accentClass}" id="list-${pane.id}"></div>
+    `;
+    ws.appendChild(el);
+
+    // File input (must live outside the pane for webkitdirectory to work cross-browser)
+    const inp = document.createElement('input');
+    inp.type = 'file';
+    inp.id = `input-${pane.id}`;
+    inp.setAttribute('webkitdirectory', '');
+    inp.multiple = true;
+    inp.accept = 'image/*';
+    inp.addEventListener('change', e => onFolderSelected(pane.id, e));
+    document.body.appendChild(inp);
+  });
+
+  // Restore current visual state
+  const name = masterList[currentIdx] || null;
+  panes.forEach(p => {
+    renderPane(p.id, name);
+    renderThumbs(p.id);
+    if (name) highlightThumb(p.id, name);
+  });
+}
+
+// ── Folder selection ──────────────────────────────────────────────────────────
+
+function openFolder(id) {
+  const inp = document.getElementById(`input-${id}`);
+  if (inp) inp.click();
+}
+
+function onFolderSelected(id, e) {
+  const pane = panes.find(p => p.id === id);
+  if (!pane) return;
+
+  const fileList = Array.from(e.target.files).filter(f => f.type.startsWith('image/'));
+  if (!fileList.length) return;
+
+  Object.values(pane.files).forEach(URL.revokeObjectURL);
+  pane.files = {};
+  pane.names = [];
+
+  pane.folderName = fileList[0].webkitRelativePath
+    ? fileList[0].webkitRelativePath.split('/')[0]
+    : `folder-${id}`;
+
+  fileList.forEach(f => {
+    const name = f.webkitRelativePath ? f.webkitRelativePath.split('/').pop() : f.name;
+    pane.files[name] = URL.createObjectURL(f);
+    pane.names.push(name);
+  });
+
+  pane.names.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+
+  rebuildAll();
+  renderWorkspace();
+  e.target.value = '';
+}
+
+// ── Master list ───────────────────────────────────────────────────────────────
+
+function rebuildAll() {
+  const all = new Set(panes.flatMap(p => p.names));
+  masterList = [...all].sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+  currentIdx = Math.min(currentIdx, Math.max(0, masterList.length - 1));
+  updateNavControls();
+  document.getElementById('idx-display').textContent =
+    masterList.length ? `${currentIdx + 1} / ${masterList.length}` : '– / –';
+}
+
+// ── Navigation ────────────────────────────────────────────────────────────────
+
+function goTo(idx) {
+  if (!masterList.length) return;
+  idx = Math.max(0, Math.min(idx, masterList.length - 1));
+  currentIdx = idx;
+  const name = masterList[idx];
+  panes.forEach(p => {
+    renderPane(p.id, name);
+    highlightThumb(p.id, name);
+  });
+  updateNavControls();
+  document.getElementById('idx-display').textContent = `${idx + 1} / ${masterList.length}`;
+}
+
+function updateNavControls() {
+  document.getElementById('btn-prev').disabled = currentIdx <= 0 || !masterList.length;
+  document.getElementById('btn-next').disabled = currentIdx >= masterList.length - 1 || !masterList.length;
+}
+
+document.getElementById('btn-prev').addEventListener('click', () => goTo(currentIdx - 1));
+document.getElementById('btn-next').addEventListener('click', () => goTo(currentIdx + 1));
+
+// ── Render single pane image ──────────────────────────────────────────────────
+
+function renderPane(id, name) {
+  const pane = panes.find(p => p.id === id);
+  if (!pane) return;
+  const img     = document.getElementById(`img-${id}`);
+  const stateEl = document.getElementById(`state-${id}`);
+  const fnameEl = document.getElementById(`fname-${id}`);
+  if (!img) return;
+
+  if (!pane.names.length) {
+    img.style.display = 'none';
+    fnameEl.style.display = 'none';
+    stateEl.style.display = 'flex';
+    stateEl.className = 'state-msg';
+    stateEl.innerHTML = `<div class="icon">📁</div><div>Open a folder to begin</div>`;
+    return;
+  }
+
+  if (!name || !pane.files[name]) {
+    img.style.display = 'none';
+    fnameEl.style.display = 'none';
+    stateEl.style.display = 'flex';
+    stateEl.className = 'state-msg dne';
+    const label = name || '—';
+    stateEl.innerHTML = `<div class="icon">✕</div><div style="font-weight:600;word-break:break-all">${label}</div><div style="font-size:10px;margin-top:2px">not in this folder</div>`;
+  } else {
+    stateEl.style.display = 'none';
+    img.style.display = 'block';
+    fnameEl.style.display = 'block';
+    img.classList.add('loading');
+    img.onload = () => img.classList.remove('loading');
+    img.src = pane.files[name];
+    fnameEl.textContent = name;
+  }
+}
+
+// ── Pill strip ────────────────────────────────────────────────────────────────
+
+function renderThumbs(id) {
+  const bar = document.getElementById(`list-${id}`);
+  if (!bar) return;
+  const pane = panes.find(p => p.id === id);
+  if (!pane) return;
+  bar.innerHTML = '';
+  masterList.forEach(name => {
+    const pill = document.createElement('button');
+    pill.className = 'thumb-pill' + (pane.files[name] ? '' : ' ghost');
+    pill.textContent = name;
+    pill.title = pane.files[name] ? name : `${name} — not in this folder`;
+    pill.addEventListener('click', () => {
+      const idx = masterList.indexOf(name);
+      if (idx >= 0) goTo(idx);
+    });
+    bar.appendChild(pill);
+  });
+}
+
+function highlightThumb(id, name) {
+  const bar = document.getElementById(`list-${id}`);
+  if (!bar) return;
+  bar.querySelectorAll('.thumb-pill').forEach((pill, i) => {
+    if (masterList[i] === name) {
+      pill.classList.add('active');
+      pill.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
+    } else {
+      pill.classList.remove('active');
+    }
+  });
+}
+
+// ── Keyboard ──────────────────────────────────────────────────────────────────
+
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if (e.key === 'ArrowLeft'  || e.key === 'a' || e.key === 'A') { e.preventDefault(); goTo(currentIdx - 1); }
+  if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') { e.preventDefault(); goTo(currentIdx + 1); }
+  if (e.key === ' ') { e.preventDefault(); zoomCurrent(); }
+  if (e.key === 'Escape') closeZoom();
+});
+
+// ── Zoom ──────────────────────────────────────────────────────────────────────
+
+function zoomImg(src) {
+  document.getElementById('zoom-img').src = src;
+  document.getElementById('zoom-overlay').classList.add('visible');
+}
+
+function zoomCurrent() {
+  const name = masterList[currentIdx];
+  if (!name) return;
+  for (const p of panes) {
+    if (p.files[name]) { zoomImg(p.files[name]); return; }
+  }
+}
+
+function closeZoom() {
+  document.getElementById('zoom-overlay').classList.remove('visible');
+}
+
+// ── Bootstrap ─────────────────────────────────────────────────────────────────
+
+panes = [
+  { id: nextId++, files: {}, names: [], folderName: '' },
+  { id: nextId++, files: {}, names: [], folderName: '' },
+];
+renderWorkspace();
+</script>
+</body>
+</html>
