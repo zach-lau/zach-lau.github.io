@@ -1,0 +1,1791 @@
+---
+permalink: /group_compare
+---
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Group Compare</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600&family=Syne:wght@400;700;800&display=swap');
+
+  :root {
+    --bg: #0e0e10;
+    --surface: #17171a;
+    --panel: #1c1c20;
+    --border: #2a2a2f;
+    --muted: #555560;
+    --text: #e8e8ed;
+    --text-dim: #888890;
+    --radius: 6px;
+    --mono: 'JetBrains Mono', monospace;
+    --display: 'Syne', sans-serif;
+    --sidebar-w: 230px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+
+  .logo {
+    font-family: var(--display);
+    font-weight: 800;
+    font-size: 15px;
+    letter-spacing: -0.5px;
+    color: #7ee8a2;
+    white-space: nowrap;
+  }
+  .logo span { color: var(--text-dim); font-weight: 400; }
+
+  #status-text {
+    font-size: 11px;
+    color: var(--text-dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #status-text.loaded { color: var(--text); }
+
+  button {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 5px 11px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s;
+  }
+  button:hover:not(:disabled) { background: var(--border); border-color: var(--muted); }
+  button:active:not(:disabled) { background: var(--muted); }
+  button:disabled { opacity: 0.3; cursor: default; }
+
+  input[type="file"] { display: none; }
+
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* ── Layout ── */
+  .workspace {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: var(--sidebar-w);
+    flex-shrink: 0;
+    border-right: 1px solid var(--border);
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .sidebar-title {
+    padding: 10px 12px 8px;
+    font-family: var(--display);
+    font-weight: 800;
+    font-size: 11px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+
+  .sidebar-clear-btn {
+    font-size: 10px;
+    padding: 2px 7px;
+    color: var(--muted);
+    background: transparent;
+    border: 1px solid transparent;
+  }
+  .sidebar-clear-btn:hover { color: var(--text); border-color: var(--border); background: transparent; }
+
+  .sidebar-filter {
+    padding: 6px 10px;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .sidebar-filter input {
+    width: 100%;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: var(--radius);
+    outline: none;
+  }
+  .sidebar-filter input:focus { border-color: var(--muted); }
+  .sidebar-filter input::placeholder { color: var(--muted); }
+
+  .group-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 0;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  .prefix-section { margin-bottom: 1px; }
+
+  .prefix-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.1s;
+  }
+  .prefix-header:hover { background: var(--panel); }
+
+  .prefix-arrow { font-size: 8px; color: var(--muted); width: 10px; flex-shrink: 0; }
+  .prefix-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .prefix-label {
+    font-family: var(--display);
+    font-weight: 800;
+    font-size: 11px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .prefix-header.is-selected .prefix-label { color: var(--text); }
+  .prefix-pts { font-size: 10px; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
+
+  .prefix-select-all-btn {
+    font-size: 10px;
+    padding: 1px 6px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+  .prefix-select-all-btn:hover { color: var(--text); border-color: var(--muted); background: transparent; }
+
+  .group-entries { }
+
+  .entry-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 10px 2px 22px;
+    font-size: 10px;
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+  .entry-row:hover { background: var(--panel); }
+  .entry-row.active { background: rgba(255,255,255,0.03); }
+
+  .entry-check {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 11px;
+    height: 11px;
+    border: 1px solid var(--muted);
+    border-radius: 2px;
+    background: transparent;
+    flex-shrink: 0;
+    cursor: pointer;
+    position: relative;
+  }
+  .entry-check:checked { background: var(--muted); border-color: var(--muted); }
+  .entry-check:checked::after {
+    content: '';
+    position: absolute;
+    left: 2px; top: 0px;
+    width: 5px; height: 8px;
+    border: 1.5px solid var(--text);
+    border-top: none; border-left: none;
+    transform: rotate(40deg);
+  }
+
+  .entry-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .entry-name {
+    flex: 1;
+    color: var(--text-dim);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .entry-row.active .entry-name { color: var(--text); }
+  .entry-n { color: var(--muted); flex-shrink: 0; white-space: nowrap; }
+
+  /* ── Main area ── */
+  .main-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 0;
+  }
+
+  .controls-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+    flex-wrap: wrap;
+    min-height: 40px;
+  }
+
+  .controls-label {
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  #dim-toggles { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+
+  .dim-pill {
+    padding: 2px 9px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    cursor: pointer;
+    font-size: 10px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+    transition: all 0.1s;
+    white-space: nowrap;
+  }
+  .dim-pill.active { background: var(--muted); color: var(--text); border-color: transparent; }
+  .dim-pill:hover:not(.active) { border-color: var(--muted); color: var(--text); }
+
+  .controls-right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  #btn-scale {
+    font-size: 11px;
+    padding: 3px 10px;
+    text-align: center;
+  }
+
+  select.metric-select {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    outline: none;
+    transition: border-color 0.12s;
+  }
+  select.metric-select:hover { border-color: var(--muted); }
+  select.metric-select option, select.metric-select optgroup { background: var(--panel); }
+
+  /* ── Charts area ── */
+  .charts-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  .chart-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 12px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .chart-title {
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: 12px;
+    color: var(--text);
+  }
+
+  .chart-wrap {
+    position: relative;
+    height: 240px;
+  }
+
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    color: var(--muted);
+    font-size: 11px;
+    text-align: center;
+    padding: 40px 20px;
+  }
+  .empty-state .icon { font-size: 36px; line-height: 1; }
+
+  /* ── Table view ── */
+  .table-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px;
+  }
+
+  body.table-mode {
+    height: auto;
+    overflow-y: auto;
+  }
+  body.table-mode .workspace {
+    overflow: visible;
+    flex: 0 0 auto;
+    min-height: 0;
+  }
+  body.table-mode .main-area {
+    overflow: visible;
+  }
+  body.table-mode .charts-area {
+    overflow-y: visible;
+    flex: 0 0 auto;
+  }
+
+  .result-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+  }
+
+  .result-table th {
+    text-align: left;
+    padding: 5px 12px;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    font-weight: 400;
+    text-transform: uppercase;
+    font-size: 10px;
+    letter-spacing: 0.3px;
+  }
+  .result-table th.num { text-align: right; }
+
+  .result-table td {
+    padding: 4px 12px;
+    color: var(--text);
+    border-bottom: 1px solid rgba(42,42,47,0.5);
+    white-space: nowrap;
+  }
+  .result-table td.num { text-align: right; color: var(--text-dim); }
+
+  .result-table tbody tr:last-child td { border-bottom: none; }
+  .result-table tbody tr:hover td { background: var(--panel); }
+
+  .cell-best {
+    color: #7ee8a2 !important;
+    font-weight: 600;
+  }
+
+  .group-cell {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  /* ── Info modal ── */
+  .modal-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.55);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-backdrop.open { display: flex; }
+
+  .modal {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    width: 460px;
+    max-width: 92vw;
+    max-height: 82vh;
+    overflow-y: auto;
+    padding: 20px 22px 18px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+  }
+
+  .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .modal-title {
+    font-family: var(--display);
+    font-weight: 800;
+    font-size: 14px;
+    color: var(--text);
+  }
+  .modal-close {
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    font-size: 16px;
+    padding: 2px 6px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .modal-close:hover { color: var(--text); background: transparent; border: none; }
+
+  .info-section { margin-bottom: 16px; }
+  .info-section:last-child { margin-bottom: 0; }
+
+  .info-section-title {
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+  }
+
+  .info-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 6px;
+    font-size: 11px;
+    line-height: 1.5;
+  }
+  .info-row:last-child { margin-bottom: 0; }
+
+  .info-key {
+    flex-shrink: 0;
+    width: 118px;
+    color: #7ee8a2;
+    font-weight: 600;
+  }
+  .info-val { color: var(--text-dim); }
+
+  /* ── Nav ── */
+  .page-nav {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin-left: 8px;
+  }
+  .nav-link {
+    font-size: 11px;
+    color: var(--muted);
+    text-decoration: none;
+    padding: 3px 8px;
+    border-radius: var(--radius);
+    transition: color 0.12s, background 0.12s;
+    white-space: nowrap;
+  }
+  .nav-link:hover { color: var(--text); background: var(--panel); }
+  .nav-link.current { color: var(--text); }
+
+  #btn-info {
+    font-size: 12px;
+    border-radius: 50%;
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    flex-shrink: 0;
+  }
+
+  /* ── N slider bar (table mode only) ── */
+  .n-slider-bar {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+  .n-slider-bar.visible { display: flex; }
+
+  /* ── Filter bar ── */
+  .filter-bar {
+    display: none;
+    align-items: center;
+    gap: 0;
+    padding: 5px 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+    flex-wrap: wrap;
+    min-height: 30px;
+  }
+  .filter-bar.visible { display: flex; }
+
+  .filter-group {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 0 12px;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+  .filter-group:first-child { padding-left: 0; }
+  .filter-group + .filter-group { border-left: 1px solid var(--border); }
+
+  #n-slider {
+    flex: 1;
+    max-width: 340px;
+    accent-color: #7ee8a2;
+    cursor: pointer;
+    height: 3px;
+  }
+
+  #n-slider-label {
+    font-size: 11px;
+    color: var(--text);
+    white-space: nowrap;
+    min-width: 60px;
+  }
+</style>
+</head>
+<body>
+
+<input type="file" id="folder-input" webkitdirectory multiple>
+
+<header>
+  <div class="logo">Group<span>Compare</span></div>
+  <nav class="page-nav">
+    <a class="nav-link" href="/">home</a>
+    <a class="nav-link current" href="/group_compare.html">group compare</a>
+    <a class="nav-link" href="/deep_dive.html">deep dive</a>
+    <a class="nav-link" href="/image_compare.html">image compare</a>
+  </nav>
+  <button id="btn-upload" onclick="document.getElementById('folder-input').click()">Upload folder</button>
+  <span id="status-text">no folder loaded</span>
+  <button id="btn-info" onclick="toggleInfo()" title="Help">?</button>
+</header>
+
+<!-- Info modal -->
+<div class="modal-backdrop" id="modal-backdrop" onclick="closeInfo(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Controls</span>
+      <button class="modal-close" onclick="toggleInfo()">✕</button>
+    </div>
+
+    <div class="info-section">
+      <div class="info-section-title">Loading data</div>
+      <div class="info-row">
+        <span class="info-key">Upload folder</span>
+        <span class="info-val">Select a directory of JSON result files. Each file is parsed for group, theta, tests, and checkpoint fields.</span>
+      </div>
+    </div>
+
+    <div class="info-section">
+      <div class="info-section-title">Sidebar</div>
+      <div class="info-row">
+        <span class="info-key">Groups</span>
+        <span class="info-val">Groups are derived from the <code>group</code> field in each JSON. Files sharing the same group name are treated as one run at different training point counts (n).</span>
+      </div>
+      <div class="info-row">
+        <span class="info-key">Prefix sections</span>
+        <span class="info-val">Groups are visually organised by their alphabetic prefix (e.g. <em>al</em>, <em>sobol</em>). Click a section header to expand or collapse it. Use all / none to bulk-select within a prefix.</span>
+      </div>
+      <div class="info-row">
+        <span class="info-key">Filter</span>
+        <span class="info-val">Type to filter visible group names.</span>
+      </div>
+      <div class="info-row">
+        <span class="info-key">n range</span>
+        <span class="info-val">Shown next to each group name. Derived from the length of the <code>theta</code> array in each JSON.</span>
+      </div>
+    </div>
+
+    <div class="info-section">
+      <div class="info-section-title">Controls bar</div>
+      <div class="info-row">
+        <span class="info-key">Dims</span>
+        <span class="info-val">Toggle individual output dimensions on or off. The number of pills updates automatically to match the selected metric's dimensionality.</span>
+      </div>
+      <div class="info-row">
+        <span class="info-key">Result</span>
+        <span class="info-val">Dropdown to select which test result to display. Options are grouped by type — <em>metrics</em> (nrmse, mse) and <em>parameters</em> (parameter_lengths, spatial_lengths). Only results present in the loaded data appear.</span>
+      </div>
+      <div class="info-row">
+        <span class="info-key">View</span>
+        <span class="info-val">Toggle between <em>chart</em> (line plots of metric vs n) and <em>table</em> (one row per group at a selected n).</span>
+      </div>
+      <div class="info-row">
+        <span class="info-key">Y scale</span>
+        <span class="info-val">Switch the chart y-axis between linear and log scale. Disabled in table view.</span>
+      </div>
+    </div>
+
+    <div class="info-section">
+      <div class="info-section-title">Table view</div>
+      <div class="info-row">
+        <span class="info-key">Training points slider</span>
+        <span class="info-val">Select a specific n value. One row per selected group is shown at that n; groups with no data at that exact n display —.</span>
+      </div>
+      <div class="info-row">
+        <span class="info-key">Best value highlight</span>
+        <span class="info-val">The lowest value in each dimension column is highlighted in green.</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="workspace">
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-title">
+      Groups
+      <button class="sidebar-clear-btn" onclick="clearAll()">clear all</button>
+    </div>
+    <div class="sidebar-filter">
+      <input type="text" id="filter-input" placeholder="Filter…" oninput="renderSidebar()">
+    </div>
+    <div class="group-list" id="group-list">
+      <div class="empty-state" style="padding:24px 16px">
+        <div class="icon">📂</div>
+        <div>Upload a results folder</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div class="main-area">
+    <div class="controls-bar">
+      <span class="controls-label">Dims</span>
+      <div id="dim-toggles"></div>
+      <div class="controls-right">
+        <span class="controls-label">Type</span>
+        <button id="btn-type" onclick="toggleType()">metrics</button>
+        <span class="controls-label">Result</span>
+        <select id="metric-select" class="metric-select" onchange="onMetricSelect(this.value)"></select>
+        <span class="controls-label">View</span>
+        <button id="btn-view" onclick="toggleView()">chart</button>
+        <span class="controls-label">Y scale</span>
+        <button id="btn-scale" onclick="toggleScale()">linear</button>
+      </div>
+    </div>
+    <div class="filter-bar" id="filter-bar"></div>
+    <div class="n-slider-bar" id="n-slider-bar">
+      <span class="controls-label">Training points</span>
+      <input type="range" id="n-slider" min="0" max="0" value="0" oninput="onNSlider()">
+      <span id="n-slider-label">n = ?</span>
+    </div>
+    <div class="charts-area" id="charts-area">
+      <div class="empty-state">
+        <div class="icon">📈</div>
+        <div>Upload a results folder, then select groups to compare</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── Shared Results Store (IndexedDB) ─────────────────────────────────────────
+
+const ResultsStore = (() => {
+  const DB = 'europa-results', STORE = 'entries', IMG_STORE = 'images';
+  function open() {
+    return new Promise((res, rej) => {
+      const r = indexedDB.open(DB, 2);
+      r.onupgradeneeded = e => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains(STORE))     db.createObjectStore(STORE);
+        if (!db.objectStoreNames.contains(IMG_STORE)) db.createObjectStore(IMG_STORE);
+      };
+      r.onsuccess = e => res(e.target.result);
+      r.onerror   = e => rej(e.target.error);
+    });
+  }
+  return {
+    async save(entries, metricMeta) {
+      const db = await open();
+      return new Promise((res, rej) => {
+        const tx = db.transaction(STORE, 'readwrite');
+        tx.objectStore(STORE).put({ entries, metricMeta: metricMeta || {}, savedAt: Date.now() }, 'data');
+        tx.oncomplete = () => { db.close(); res(); };
+        tx.onerror    = e => rej(e.target.error);
+      });
+    },
+    async load() {
+      const db = await open();
+      return new Promise((res, rej) => {
+        const r = db.transaction(STORE,'readonly').objectStore(STORE).get('data');
+        r.onsuccess = e => { db.close(); res(e.target.result ?? null); };
+        r.onerror   = e => rej(e.target.error);
+      });
+    },
+    async clear() {
+      const db = await open();
+      return new Promise((res, rej) => {
+        const tx = db.transaction(STORE, 'readwrite');
+        tx.objectStore(STORE).delete('data');
+        tx.oncomplete = () => { db.close(); res(); };
+        tx.onerror    = e => rej(e.target.error);
+      });
+    },
+    async saveImages(data) {
+      const db = await open();
+      return new Promise((res, rej) => {
+        const tx = db.transaction(IMG_STORE, 'readwrite');
+        tx.objectStore(IMG_STORE).put(data, 'data');
+        tx.oncomplete = () => { db.close(); res(); };
+        tx.onerror    = e => rej(e.target.error);
+      });
+    },
+  };
+})();
+
+function extractImagesFromUpload(fileList) {
+  const imgs = Array.from(fileList).filter(f => f.type.startsWith('image/'));
+  if (!imgs.length) return null;
+  const rootName = imgs[0].webkitRelativePath?.split('/')[0] || 'uploaded';
+  const sfs = {};
+  imgs.forEach(f => {
+    const parts = f.webkitRelativePath ? f.webkitRelativePath.split('/') : [rootName, 'root', f.name];
+    if (parts.length < 3) return;
+    const sub = parts[1], base = parts[parts.length - 1];
+    if (!sfs[sub]) sfs[sub] = { files: {}, names: [] };
+    sfs[sub].files[base] = f;
+    sfs[sub].names.push(base);
+  });
+  Object.values(sfs).forEach(sf =>
+    sf.names.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }))
+  );
+  return Object.keys(sfs).length ? { subfolders: sfs, rootName, savedAt: Date.now() } : null;
+}
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const METRIC_GROUPS = {
+  metrics:    ['nrmse', 'mse'],
+  parameters: ['parameter_lengths', 'spatial_lengths'],
+};
+
+const PALETTE = [
+  '#7ee8a2', '#5b8dee', '#f6a35c', '#e06cbb', '#60d4e4',
+  '#b8a4f8', '#f9e15b', '#ff6b6b', '#4ecdc4', '#f7b731',
+  '#a8d8ea', '#ffb347',
+];
+
+const DIM_NAMES = ['Density', 'Vx', 'Vy', 'Vz', 'Bx', 'By', 'Bz'];
+
+const DASH_PATTERNS = [
+  [],
+  [6, 3],
+  [2, 3],
+  [10, 4, 2, 4],
+  [8, 3, 2, 3, 2, 3],
+];
+
+// ── State ─────────────────────────────────────────────────────────────────────
+
+let allEntries  = []; // { prefix, group, n, filename, tests: {key: number[]}, testsCi: {key: [number[], number[]]} }
+let groupColors = {}; // { group: hexColor } — same color for all groups in a prefix
+let groupDash   = {}; // { group: borderDash[] } — distinguishes groups within a prefix
+let colorIdx    = 0;
+let selected    = new Set(); // active group names
+let dimVisible  = {};        // { dimIndex: bool }
+let charts      = {};        // { "metricName__dim": Chart }
+let maxDims     = 0;
+let metricNames = [];
+let yLogScale   = false;
+let viewType    = 'metrics';    // 'metrics' or 'parameters'
+let showMetric  = 'nrmse';      // current metric filter within the active viewType group
+let viewMode    = 'chart';      // 'chart' or 'table'
+let allNValues  = [];      // sorted unique n values across all entries
+let tableNIdx   = 0;       // index into allNValues for table slider
+let expanded    = new Set(); // expanded prefix sections in sidebar
+let metricMeta  = {};        // { testKey: { metric, weights, test } } — from metrics/ subfolder
+let filterExcluded = { metric: new Set(), weights: new Set(), test: new Set() };
+
+// ── File Loading ──────────────────────────────────────────────────────────────
+
+document.getElementById('folder-input').addEventListener('change', async function (e) {
+  const files = Array.from(e.target.files).filter(f => f.name.endsWith('.json'));
+  if (!files.length) { e.target.value = ''; return; }
+
+  const entries = [];
+  for (const file of files) {
+    try {
+      const data  = JSON.parse(await file.text());
+      const cp    = data.checkpoint || {};
+      const tests = {}, testsCi = {};
+      // Support old flat format (key→array) and new nested format (key→{key:array,"key-ci":[[lo],[hi]]})
+      Object.entries(data.tests || {}).forEach(([outerKey, outerVal]) => {
+        if (Array.isArray(outerVal)) {
+          tests[outerKey] = outerVal;
+        } else if (outerVal && typeof outerVal === 'object') {
+          if (Array.isArray(outerVal[outerKey])) tests[outerKey] = outerVal[outerKey];
+          const ci = outerVal[`${outerKey}-ci`];
+          if (Array.isArray(ci) && ci.length === 2) testsCi[outerKey] = ci;
+        }
+      });
+      if (Array.isArray(cp.parameter_lengths)) tests['parameter_lengths'] = cp.parameter_lengths;
+      if (Array.isArray(cp.spatial_lengths))   tests['spatial_lengths']   = cp.spatial_lengths;
+      if (!Object.keys(tests).length && !Array.isArray(cp.losses)) continue;
+
+      entries.push({
+        prefix:   extractPrefix(data.group || 'unclassified'),
+        group:    data.group || 'unclassified',
+        n:        Array.isArray(data.theta) ? data.theta.length : null,
+        filename: file.name,
+        tests,
+        testsCi,
+        losses:   Array.isArray(cp.losses) ? cp.losses : [],
+        theta:    Array.isArray(data.theta) ? data.theta : [],
+      });
+    } catch (_) { /* skip malformed JSON */ }
+  }
+
+  metricMeta = {};
+  const metricFiles = Array.from(e.target.files).filter(f =>
+    f.webkitRelativePath && f.webkitRelativePath.split('/').some(p => p === 'metrics') && f.name.endsWith('.json')
+  );
+  for (const mf of metricFiles) {
+    try {
+      const d = JSON.parse(await mf.text());
+      if (d.name) metricMeta[d.name] = { metric: d.metric ?? 'other', weights: d.weights ?? 'other', test: d.test ?? 'other' };
+    } catch (_) {}
+  }
+
+  await ResultsStore.save(entries, metricMeta);
+  const imgData = extractImagesFromUpload(e.target.files);
+  if (imgData) ResultsStore.saveImages(imgData).catch(() => {});
+  initFromEntries(entries);
+  e.target.value = '';
+});
+
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    const cached = await ResultsStore.load();
+    if (cached?.entries?.length) {
+      metricMeta = cached.metricMeta || {};
+      initFromEntries(cached.entries, true);
+    }
+  } catch (_) {}
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    const active = document.activeElement;
+    if (active && active !== document.body && ['INPUT', 'TEXTAREA'].includes(active.tagName)) return;
+    const sel = document.getElementById('metric-select');
+    if (!sel || !sel.options.length) return;
+    e.preventDefault();
+    const len = sel.options.length;
+    const next = e.key === 'ArrowDown'
+      ? (sel.selectedIndex + 1) % len
+      : (sel.selectedIndex - 1 + len) % len;
+    sel.selectedIndex = next;
+    onMetricSelect(sel.value);
+  });
+});
+
+function initFromEntries(entries, fromCache = false) {
+  // Reset UI state
+  Object.values(charts).forEach(c => c.destroy());
+  allEntries  = entries;
+  groupColors = {};
+  groupDash   = {};
+  colorIdx    = 0;
+  selected    = new Set();
+  dimVisible  = {};
+  charts      = {};
+  maxDims     = 0;
+  metricNames = [];
+  expanded    = new Set();
+  filterExcluded = { metric: new Set(), weights: new Set(), test: new Set() };
+
+  // Rebuild derived state
+  const metricSet = new Set();
+  entries.forEach(e => {
+    Object.keys(e.tests || {}).forEach(k => metricSet.add(k));
+    Object.values(e.tests || {}).forEach(arr => {
+      if (Array.isArray(arr)) maxDims = Math.max(maxDims, arr.length);
+    });
+  });
+
+  // Assign one color per prefix; assign dash pattern per group within prefix (oldest→newest)
+  const prefixGroups = {};
+  entries.forEach(e => {
+    if (!prefixGroups[e.prefix]) prefixGroups[e.prefix] = new Set();
+    prefixGroups[e.prefix].add(e.group);
+  });
+  Object.keys(prefixGroups).sort().forEach(prefix => {
+    const color = PALETTE[colorIdx % PALETTE.length];
+    colorIdx++;
+    const sorted = [...prefixGroups[prefix]].sort((a, b) => {
+      const na = parseInt(a.match(/(\d+)$/)?.[1] ?? '0', 10);
+      const nb = parseInt(b.match(/(\d+)$/)?.[1] ?? '0', 10);
+      return na - nb;
+    });
+    sorted.forEach((group, i) => {
+      groupColors[group] = color;
+      groupDash[group]   = DASH_PATTERNS[i % DASH_PATTERNS.length];
+    });
+  });
+
+  metricNames = [...metricSet].sort();
+
+  // Default filter: nrmse metric, flat weights, prior-test + random-test only
+  const DEFAULT_INCLUDES = {
+    metric:  new Set(['nrmse']),
+    weights: new Set(['flat']),
+    test:    new Set(['prior-test', 'random-test']),
+  };
+  const availOpts = buildFilterOptions();
+  for (const attr of ['metric', 'weights', 'test']) {
+    const vals = [...availOpts[attr]];
+    if (availOpts.hasOther) vals.push('other');
+    vals.forEach(v => { if (!DEFAULT_INCLUDES[attr].has(v)) filterExcluded[attr].add(v); });
+    // If nothing matched the defaults, fall back to showing everything
+    if (filterExcluded[attr].size === vals.length) filterExcluded[attr].clear();
+  }
+
+  populateMetricSelect();
+  renderFilterBar();
+  for (let i = 0; i < maxDims; i++) dimVisible[i] = true;
+
+  // Auto-expand and select all groups per prefix
+  [...new Set(entries.map(e => e.prefix))].forEach(p => {
+    expanded.add(p);
+    [...new Set(entries.filter(e => e.prefix === p).map(e => e.group))].forEach(g => selected.add(g));
+  });
+
+  const nGroups = Object.keys(groupColors).length;
+  const src     = fromCache ? ' · from cache' : '';
+  document.getElementById('status-text').textContent =
+    `${nGroups} group${nGroups !== 1 ? 's' : ''} · ${metricNames.length} metric${metricNames.length !== 1 ? 's' : ''}${src}`;
+  document.getElementById('status-text').classList.add('loaded');
+
+  renderSidebar();
+  renderDimToggles();
+  rebuildCharts();
+}
+
+function extractPrefix(groupVal) {
+  if (!groupVal) return 'unclassified';
+  const m = groupVal.match(/^([a-zA-Z]+(?:-[a-zA-Z]+)*)/);
+  return m ? m[1].toLowerCase() : groupVal;
+}
+
+// ── Sidebar ───────────────────────────────────────────────────────────────────
+
+function renderSidebar() {
+  const filter    = (document.getElementById('filter-input').value || '').toLowerCase();
+  const container = document.getElementById('group-list');
+
+  if (!allEntries.length) {
+    container.innerHTML = `<div class="empty-state" style="padding:24px 16px">
+      <div class="icon">📂</div><div>Upload a results folder</div></div>`;
+    return;
+  }
+
+  // Build prefix → entries map (prefix is just for visual grouping)
+  const prefixMap = {};
+  allEntries.forEach(e => {
+    if (!prefixMap[e.prefix]) prefixMap[e.prefix] = [];
+    prefixMap[e.prefix].push(e);
+  });
+
+  container.innerHTML = '';
+
+  Object.keys(prefixMap).sort().forEach(prefix => {
+    const entries   = prefixMap[prefix];
+    const isExpand  = expanded.has(prefix);
+
+    // Filter: show section if prefix matches OR any entry's group matches
+    const visibleEntries = filter
+      ? entries.filter(e => e.group.toLowerCase().includes(filter) || prefix.includes(filter))
+      : entries;
+    if (!visibleEntries.length) return;
+
+    // Unique group names in this section, sorted oldest → newest by trailing number
+    const uniqueGroups = [...new Set(visibleEntries.map(e => e.group))].sort((a, b) => {
+      const na = parseInt(a.match(/(\d+)$/)?.[1] ?? '0', 10);
+      const nb = parseInt(b.match(/(\d+)$/)?.[1] ?? '0', 10);
+      return na - nb;
+    });
+    const selCount     = uniqueGroups.filter(g => selected.has(g)).length;
+    const nLabel       = `${uniqueGroups.length} group${uniqueGroups.length !== 1 ? 's' : ''}`;
+
+    const section = document.createElement('div');
+    section.className = 'prefix-section';
+
+    // Prefix header (visual grouping only — click to expand/collapse)
+    const header = document.createElement('div');
+    header.className = 'prefix-header' + (selCount > 0 ? ' is-selected' : '');
+    header.innerHTML = `
+      <span class="prefix-arrow">${isExpand ? '▼' : '▶'}</span>
+      <span class="prefix-dot" style="background:var(--muted)"></span>
+      <span class="prefix-label">${escHtml(prefix)}</span>
+      <span class="prefix-pts">${nLabel}</span>
+      <button class="prefix-select-all-btn"
+        onclick="event.stopPropagation(); selectAllInPrefix('${escAttr(prefix)}', ${selCount < uniqueGroups.length})">
+        ${selCount === uniqueGroups.length ? 'none' : 'all'}
+      </button>
+    `;
+    header.addEventListener('click', () => {
+      expanded.has(prefix) ? expanded.delete(prefix) : expanded.add(prefix);
+      renderSidebar();
+    });
+    section.appendChild(header);
+
+    if (isExpand) {
+      const entriesDiv = document.createElement('div');
+      entriesDiv.className = 'group-entries';
+
+      // One row per unique group name; collect n values to show how many entries share the group
+      const groupEntries = {};
+      visibleEntries.forEach(e => {
+        if (!groupEntries[e.group]) groupEntries[e.group] = [];
+        groupEntries[e.group].push(e);
+      });
+
+      uniqueGroups.forEach(group => {
+        const grpEntries = groupEntries[group];
+        const isSel      = selected.has(group);
+        const color      = groupColors[group] || '#888';
+        const ns         = grpEntries.map(e => e.n).filter(n => n !== null).sort((a,b) => a - b);
+        const ptLabel    = ns.length
+          ? (ns.length === 1 ? `n=${ns[0]}` : `n=${ns[0]}–${ns[ns.length-1]}`)
+          : '?';
+
+        const row = document.createElement('div');
+        row.className = 'entry-row' + (isSel ? ' active' : '');
+        row.innerHTML = `
+          <input type="checkbox" class="entry-check" ${isSel ? 'checked' : ''}
+            onclick="event.stopPropagation(); toggleGroup('${escAttr(group)}', this.checked)">
+          <span class="entry-dot" style="background:${color}"></span>
+          <span class="entry-name" title="${escAttr(group)}">${escHtml(group)}</span>
+          <span class="entry-n">${ptLabel}</span>
+        `;
+        row.addEventListener('click', () => toggleGroup(group, !isSel));
+        entriesDiv.appendChild(row);
+      });
+
+      section.appendChild(entriesDiv);
+    }
+
+    container.appendChild(section);
+  });
+}
+
+function toggleGroup(group, checked) {
+  checked ? selected.add(group) : selected.delete(group);
+  renderSidebar();
+  updateView();
+}
+
+function selectAllInPrefix(prefix, addAll) {
+  allEntries
+    .filter(e => e.prefix === prefix)
+    .forEach(e => addAll ? selected.add(e.group) : selected.delete(e.group));
+  renderSidebar();
+  updateView();
+}
+
+function clearAll() {
+  selected.clear();
+  renderSidebar();
+  updateView();
+}
+
+// ── Dimension Toggles ─────────────────────────────────────────────────────────
+
+function getVisibleMetricDims() {
+  const visibleMetrics = metricNames.filter(m => metricMatchesFilter(m, showMetric));
+  let dims = 0;
+  allEntries.forEach(e =>
+    visibleMetrics.forEach(metric => {
+      const arr = e.tests[metric];
+      if (Array.isArray(arr)) dims = Math.max(dims, arr.length);
+    })
+  );
+  return dims || maxDims;
+}
+
+function renderDimToggles() {
+  const count     = allEntries.length ? getVisibleMetricDims() : maxDims;
+  const container = document.getElementById('dim-toggles');
+  container.innerHTML = '';
+
+  for (let i = 0; i < count; i++) {
+    const btn = document.createElement('button');
+    btn.className = 'dim-pill' + (dimVisible[i] ? ' active' : '');
+    btn.textContent = DIM_NAMES[i] ? `dim ${i} (${DIM_NAMES[i]})` : `dim ${i}`;
+    const dim = i;
+    btn.addEventListener('click', () => {
+      dimVisible[dim] = !dimVisible[dim];
+      btn.classList.toggle('active', dimVisible[dim]);
+      if (viewMode === 'chart') {
+        document.querySelectorAll(`.chart-card[data-dim="${dim}"]`).forEach(card => {
+          card.style.display = dimVisible[dim] ? '' : 'none';
+        });
+      } else {
+        renderTable();
+      }
+    });
+    container.appendChild(btn);
+  }
+}
+
+// ── Reference line plugin ─────────────────────────────────────────────────────
+
+Chart.register({
+  id: 'refLines',
+  afterDraw(chart) {
+    const lines = chart.options.plugins.refLines?.lines;
+    if (!lines?.length) return;
+    const { ctx, chartArea: { left, right }, scales: { y } } = chart;
+    ctx.save();
+    lines.forEach(({ value, color = 'rgba(255,255,255,0.55)', dash = [6, 4] }) => {
+      const yPx = y.getPixelForValue(value);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash(dash);
+      ctx.beginPath();
+      ctx.moveTo(left, yPx);
+      ctx.lineTo(right, yPx);
+      ctx.stroke();
+    });
+    ctx.restore();
+  }
+});
+
+// ── Whisker plugin ────────────────────────────────────────────────────────────
+
+Chart.register({
+  id: 'whiskers',
+  afterDatasetsDraw(chart) {
+    const ctx = chart.ctx;
+    chart.data.datasets.forEach((ds, i) => {
+      if (!ds.ciLo || !ds.ciHi) return;
+      const meta = chart.getDatasetMeta(i);
+      if (meta.hidden) return;
+      const yScale = chart.scales.y;
+      ctx.save();
+      ctx.strokeStyle = ds.borderColor.replace(/[\d.]+\)$/, '0.45)');
+      ctx.lineWidth = 1;
+      const cap = 4;
+      meta.data.forEach((pt, j) => {
+        const lo = ds.ciLo[j], hi = ds.ciHi[j];
+        if (lo == null || hi == null) return;
+        const x = pt.x;
+        const yLo = yScale.getPixelForValue(lo);
+        const yHi = yScale.getPixelForValue(hi);
+        ctx.beginPath(); ctx.moveTo(x, yLo); ctx.lineTo(x, yHi); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x - cap, yLo); ctx.lineTo(x + cap, yLo); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x - cap, yHi); ctx.lineTo(x + cap, yHi); ctx.stroke();
+      });
+      ctx.restore();
+    });
+  }
+});
+
+// ── Charts ────────────────────────────────────────────────────────────────────
+
+function safeId(str) {
+  return str.replace(/[^a-z0-9]/gi, '_');
+}
+
+function rebuildCharts() {
+  Object.values(charts).forEach(c => c.destroy());
+  charts = {};
+
+  const area = document.getElementById('charts-area');
+  area.innerHTML = '';
+
+  if (!metricNames.length) {
+    area.innerHTML = `<div class="empty-state">
+      <div class="icon">📈</div>
+      <div>Upload a results folder, then select groups to compare</div></div>`;
+    return;
+  }
+
+  const visibleMetrics = metricNames.filter(m => metricMatchesFilter(m, showMetric));
+  const dimCount = getVisibleMetricDims();
+  visibleMetrics.forEach(metric => {
+    for (let dim = 0; dim < dimCount; dim++) {
+      const key  = `${metric}__${dim}`;
+      const id   = `chart_${safeId(metric)}_d${dim}`;
+      const card = document.createElement('div');
+      card.className = 'chart-card';
+      card.dataset.dim = dim;
+      if (!dimVisible[dim]) card.style.display = 'none';
+      card.innerHTML = `
+        <div class="chart-title">${escHtml(metric)} · dim ${dim}${DIM_NAMES[dim] ? ` (${DIM_NAMES[dim]})` : ''}</div>
+        <div class="chart-wrap"><canvas id="${id}"></canvas></div>
+      `;
+      area.appendChild(card);
+
+      const ctx = document.getElementById(id);
+      charts[key] = new Chart(ctx, makeConfig(metric, dim));
+    }
+  });
+}
+
+function isNrmseMetric(metric) {
+  return getEffectiveMeta(metric)?.metric === 'nrmse' || metric === 'nrmse';
+}
+
+function makeConfig(metric, dim) {
+  return {
+    type: 'scatter',
+    data: { datasets: buildDatasets(metric, dim) },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 150 },
+      scales: {
+        x: {
+          type: 'linear',
+          title: {
+            display: true,
+            text: 'Training Points',
+            color: '#555560',
+            font: { family: "'JetBrains Mono', monospace", size: 10 },
+          },
+          grid:  { color: '#222227' },
+          ticks: { color: '#555560', font: { family: "'JetBrains Mono', monospace", size: 10 } },
+        },
+        y: {
+          type: yLogScale ? 'logarithmic' : 'linear',
+          title: {
+            display: true,
+            text: metric,
+            color: '#555560',
+            font: { family: "'JetBrains Mono', monospace", size: 10 },
+          },
+          grid:  { color: '#222227' },
+          ticks: { color: '#555560', font: { family: "'JetBrains Mono', monospace", size: 10 } },
+        },
+      },
+      plugins: {
+        refLines: isNrmseMetric(metric) ? { lines: [{ value: 1 }] } : undefined,
+        legend: {
+          display: true,
+          labels: {
+            color: '#888890',
+            font: { family: "'JetBrains Mono', monospace", size: 10 },
+            boxWidth: 24,
+            boxHeight: 2,
+            padding: 8,
+          },
+        },
+        tooltip: {
+          backgroundColor: '#17171a',
+          borderColor: '#2a2a2f',
+          borderWidth: 1,
+          titleColor: '#e8e8ed',
+          bodyColor:  '#888890',
+          titleFont: { family: "'JetBrains Mono', monospace", size: 11 },
+          bodyFont:  { family: "'JetBrains Mono', monospace", size: 11 },
+          callbacks: {
+            title: items => `n = ${items[0].parsed.x}`,
+            label: item => {
+              const ds = item.dataset, j = item.dataIndex;
+              const base = ` ${ds.label}: ${item.parsed.y.toExponential(4)}`;
+              const lo = ds.ciLo?.[j], hi = ds.ciHi?.[j];
+              return lo != null ? `${base}  [${lo.toExponential(2)}, ${hi.toExponential(2)}]` : base;
+            },
+          },
+        },
+      },
+    },
+  };
+}
+
+function buildDatasets(metric, dim) {
+  const datasets = [];
+
+  selected.forEach(group => {
+    const entries = allEntries.filter(e => e.group === group && e.tests[metric]);
+    if (!entries.length) return;
+
+    const color = groupColors[group] || '#888';
+    const rgb   = hexToRgb(color);
+
+    const sorted = entries
+      .filter(e => Array.isArray(e.tests[metric]) && dim < e.tests[metric].length && e.n !== null)
+      .sort((a, b) => a.n - b.n);
+
+    const pts     = sorted.map(e => ({ x: e.n, y: e.tests[metric][dim] }));
+    const ciLoArr = sorted.map(e => { const ci = e.testsCi?.[metric]; return ci ? ci[0][dim] : null; });
+    const ciHiArr = sorted.map(e => { const ci = e.testsCi?.[metric]; return ci ? ci[1][dim] : null; });
+
+    if (!pts.length) return;
+
+    datasets.push({
+      label:            group,
+      data:             pts,
+      borderColor:      `rgba(${rgb}, 1)`,
+      backgroundColor:  `rgba(${rgb}, 1)`,
+      borderDash:       groupDash[group] || [],
+      showLine:         pts.length > 1,
+      spanGaps:         false,
+      borderWidth:      2,
+      pointRadius:      pts.length > 1 ? 3 : 5,
+      pointHoverRadius: 6,
+      pointStyle:       'circle',
+      ciLo:             ciLoArr,
+      ciHi:             ciHiArr,
+    });
+  });
+
+  return datasets;
+}
+
+function updateCharts() {
+  const dimCount = getVisibleMetricDims();
+  metricNames.forEach(metric => {
+    for (let dim = 0; dim < dimCount; dim++) {
+      const chart = charts[`${metric}__${dim}`];
+      if (!chart) continue;
+      chart.data.datasets = buildDatasets(metric, dim);
+      chart.update('none');
+    }
+  });
+}
+
+function updateView() {
+  if (viewMode === 'chart') updateCharts();
+  else renderTable();
+}
+
+function rebuildView() {
+  renderDimToggles();
+  if (viewMode === 'chart') rebuildCharts();
+  else renderTable();
+}
+
+function toggleView() {
+  viewMode = viewMode === 'chart' ? 'table' : 'chart';
+  document.getElementById('btn-view').textContent = viewMode;
+  document.getElementById('btn-scale').disabled = viewMode === 'table';
+  document.getElementById('n-slider-bar').classList.toggle('visible', viewMode === 'table');
+  document.body.classList.toggle('table-mode', viewMode === 'table');
+  if (viewMode === 'table') tableNIdx = -1; // renderTable will set to max after computing allNValues
+  rebuildView();
+}
+
+function metricMatchesFilter(metricName, filter) {
+  return metricName === filter;
+}
+
+function populateMetricSelect() {
+  const sel = document.getElementById('metric-select');
+  sel.innerHTML = '';
+
+  const paramSet = new Set(['parameter_lengths', 'spatial_lengths']);
+  const options = viewType === 'parameters'
+    ? metricNames.filter(m =>  paramSet.has(m))
+    : metricNames.filter(m => !paramSet.has(m) && testPassesFilter(m));
+
+  options.forEach(name => {
+    const o = document.createElement('option');
+    o.value = name;
+    o.textContent = name;
+    if (name === showMetric) o.selected = true;
+    sel.appendChild(o);
+  });
+
+  // If current showMetric isn't in this type's options, fall back to first
+  if (!options.includes(showMetric)) {
+    const first = sel.querySelector('option');
+    if (first) { showMetric = first.value; sel.value = first.value; }
+  } else {
+    sel.value = showMetric;
+  }
+
+  document.getElementById('btn-type').textContent = viewType;
+}
+
+function onMetricSelect(value, rebuild = true) {
+  showMetric = value;
+  if (rebuild) rebuildView();
+}
+
+function toggleType() {
+  viewType = viewType === 'metrics' ? 'parameters' : 'metrics';
+  populateMetricSelect();
+  renderFilterBar();
+  rebuildView();
+}
+
+function toggleScale() {
+  yLogScale = !yLogScale;
+  document.getElementById('btn-scale').textContent = yLogScale ? 'log' : 'linear';
+  rebuildCharts();
+}
+
+function onNSlider() {
+  tableNIdx = parseInt(document.getElementById('n-slider').value, 10);
+  renderTable();
+}
+
+// ── Filter bar ───────────────────────────────────────────────────────────────
+
+function buildFilterOptions() {
+  const paramSet = new Set(['parameter_lengths', 'spatial_lengths']);
+  const opts = { metric: new Set(), weights: new Set(), test: new Set() };
+  let hasOther = false;
+  metricNames.filter(m => !paramSet.has(m)).forEach(m => {
+    const meta = getEffectiveMeta(m);
+    if (meta) {
+      opts.metric.add(meta.metric   ?? 'other');
+      opts.weights.add(meta.weights ?? 'other');
+      opts.test.add(meta.test       ?? 'other');
+    } else {
+      hasOther = true;
+    }
+  });
+  return {
+    metric:  [...opts.metric].sort(),
+    weights: [...opts.weights].sort(),
+    test:    [...opts.test].sort(),
+    hasOther,
+  };
+}
+
+function testPassesFilter(testKey) {
+  const paramSet = new Set(['parameter_lengths', 'spatial_lengths']);
+  if (paramSet.has(testKey)) return true;
+  const meta = getEffectiveMeta(testKey);
+  for (const attr of ['metric', 'weights', 'test']) {
+    const val = meta ? (meta[attr] ?? 'other') : 'other';
+    if (filterExcluded[attr].has(val)) return false;
+  }
+  return true;
+}
+
+function renderFilterBar() {
+  const bar = document.getElementById('filter-bar');
+  const paramSet = new Set(['parameter_lengths', 'spatial_lengths']);
+  const nonParamMetrics = metricNames.filter(m => !paramSet.has(m));
+
+  if (viewType === 'parameters' || !nonParamMetrics.length) {
+    bar.className = 'filter-bar';
+    bar.innerHTML = '';
+    return;
+  }
+
+  const opts = buildFilterOptions();
+  const defs = [
+    { attr: 'metric',  label: 'Metric'  },
+    { attr: 'weights', label: 'Weights' },
+    { attr: 'test',    label: 'Test'    },
+  ];
+
+  bar.className = 'filter-bar visible';
+  bar.innerHTML = '';
+
+  defs.forEach(({ attr, label }) => {
+    const values = [...opts[attr]];
+    if (opts.hasOther) values.push('other');
+    if (!values.length) return;
+
+    const group = document.createElement('div');
+    group.className = 'filter-group';
+
+    const lbl = document.createElement('span');
+    lbl.className = 'controls-label';
+    lbl.textContent = label;
+    group.appendChild(lbl);
+
+    values.forEach(val => {
+      const pill = document.createElement('button');
+      pill.className = 'dim-pill' + (!filterExcluded[attr].has(val) ? ' active' : '');
+      pill.textContent = val;
+      pill.addEventListener('click', () => {
+        if (filterExcluded[attr].has(val)) filterExcluded[attr].delete(val);
+        else filterExcluded[attr].add(val);
+        pill.classList.toggle('active', !filterExcluded[attr].has(val));
+        populateMetricSelect();
+        rebuildView();
+      });
+      group.appendChild(pill);
+    });
+
+    bar.appendChild(group);
+  });
+}
+
+// ── Table view ────────────────────────────────────────────────────────────────
+
+function renderTable() {
+  // Destroy any lingering charts
+  Object.values(charts).forEach(c => c.destroy());
+  charts = {};
+
+  const area = document.getElementById('charts-area');
+  area.innerHTML = '';
+
+  const paramSet = new Set(['parameter_lengths', 'spatial_lengths']);
+  const visibleMetrics = viewType === 'parameters'
+    ? metricNames.filter(m =>  paramSet.has(m))
+    : metricNames.filter(m => !paramSet.has(m) && testPassesFilter(m));
+
+  if (!visibleMetrics.length || !selected.size) {
+    area.innerHTML = `<div class="empty-state">
+      <div class="icon">📊</div>
+      <div>Select groups to compare</div></div>`;
+    return;
+  }
+
+  // Recompute available n values across all selected groups
+  const nSet = new Set();
+  selected.forEach(group => allEntries.filter(e => e.group === group && e.n !== null).forEach(e => nSet.add(e.n)));
+  allNValues = [...nSet].sort((a, b) => a - b);
+
+  // Sync slider
+  const slider = document.getElementById('n-slider');
+  slider.max = Math.max(0, allNValues.length - 1);
+  if (tableNIdx < 0 || tableNIdx >= allNValues.length) tableNIdx = Math.max(0, allNValues.length - 1);
+  slider.value = tableNIdx;
+  document.getElementById('n-slider-label').textContent =
+    allNValues.length ? `n = ${allNValues[tableNIdx]}` : 'n = ?';
+
+  // One row per selected group at the chosen n
+  const chosenN = allNValues[tableNIdx] ?? null;
+  const rows = [];
+  selected.forEach(group => {
+    const match = allEntries.find(e => e.group === group && e.n === chosenN);
+    if (match) rows.push(match);
+    else rows.push({ group, n: chosenN, tests: {} }); // placeholder for missing data
+  });
+  rows.sort((a, b) => a.group.localeCompare(b.group));
+
+  visibleMetrics.forEach(metric => {
+    // Compute dim count for this specific metric
+    let metricDimCount = 0;
+    allEntries.forEach(e => {
+      const arr = e.tests[metric];
+      if (Array.isArray(arr)) metricDimCount = Math.max(metricDimCount, arr.length);
+    });
+    const visibleDims = Array.from({length: metricDimCount}, (_, i) => i).filter(i => dimVisible[i]);
+    const card = document.createElement('div');
+    card.className = 'table-card';
+
+    const title = document.createElement('div');
+    title.className = 'chart-title';
+    title.style.marginBottom = '10px';
+    title.textContent = metric;
+    card.appendChild(title);
+
+    const table = document.createElement('table');
+    table.className = 'result-table';
+
+    // Header row
+    const thead = document.createElement('thead');
+    const hrow  = document.createElement('tr');
+    for (const label of ['Group', 'n', ...visibleDims.map(d => DIM_NAMES[d] ? `dim ${d} (${DIM_NAMES[d]})` : `dim ${d}`)]) {
+      const th = document.createElement('th');
+      th.textContent = label;
+      if (label !== 'Group') th.className = 'num';
+      hrow.appendChild(th);
+    }
+    thead.appendChild(hrow);
+    table.appendChild(thead);
+
+    // For LML higher is better; for all other metrics lower is better.
+    const isLmlMetric = getEffectiveMeta(metric)?.metric === 'lml';
+
+    // Compute per-dim best values across rows that have data
+    const dimBests = {};
+    visibleDims.forEach(dim => {
+      const vals = rows
+        .map(e => Array.isArray(e.tests[metric]) && dim < (e.tests[metric]?.length ?? 0) ? e.tests[metric][dim] : null)
+        .filter(v => v !== null);
+      dimBests[dim] = vals.length ? (isLmlMetric ? Math.max(...vals) : Math.min(...vals)) : null;
+    });
+
+    // Body rows
+    const tbody = document.createElement('tbody');
+    rows.forEach(e => {
+      const tr = document.createElement('tr');
+
+      // Group cell
+      const tdGroup = document.createElement('td');
+      const color   = groupColors[e.group] || '#888';
+      tdGroup.innerHTML = `<span class="group-cell">
+        <span class="entry-dot" style="background:${color}"></span>
+        <span>${escHtml(e.group)}</span>
+      </span>`;
+      tr.appendChild(tdGroup);
+
+      // n cell
+      const tdN = document.createElement('td');
+      tdN.className = 'num';
+      tdN.textContent = e.n ?? '?';
+      tr.appendChild(tdN);
+
+      // Dim cells
+      visibleDims.forEach(dim => {
+        const td  = document.createElement('td');
+        const arr = e.tests[metric];
+        const val = Array.isArray(arr) && dim < arr.length ? arr[dim] : null;
+        const isMin = viewType === 'metrics' && val !== null && dimBests[dim] !== null && val === dimBests[dim];
+        td.className = 'num' + (isMin ? ' cell-best' : '');
+        if (val !== null) {
+          const ci = e.testsCi?.[metric];
+          const lo = ci ? ci[0][dim] : null, hi = ci ? ci[1][dim] : null;
+          const { valStr, ciStr } = fmtWithCi(val, lo, hi);
+          if (ciStr) {
+            td.innerHTML = `${valStr}<br><span style="color:var(--muted);font-size:9px">${ciStr}</span>`;
+          } else {
+            td.textContent = valStr;
+          }
+        } else {
+          td.textContent = '—';
+        }
+        tr.appendChild(td);
+      });
+
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    card.appendChild(table);
+    area.appendChild(card);
+  });
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+// Format val+CI to 2 sig figs (more if lo/hi round to the same string).
+// Returns { valStr, ciStr } where both use the same toExponential decimal count.
+function fmtWithCi(val, lo, hi) {
+  let d = 1; // toExponential(1) = 2 sig figs
+  if (lo != null && hi != null) {
+    while (d < 6 && lo.toExponential(d) === hi.toExponential(d)) d++;
+  }
+  const valStr = val.toExponential(d);
+  if (lo == null || hi == null) return { valStr, ciStr: null };
+  return { valStr, ciStr: `[${lo.toExponential(d)}, ${hi.toExponential(d)}]` };
+}
+
+function hexToRgb(hex) {
+  hex = hex.replace('#', '');
+  const r = parseInt(hex.slice(0, 2), 16);
+  const g = parseInt(hex.slice(2, 4), 16);
+  const b = parseInt(hex.slice(4, 6), 16);
+  return `${r},${g},${b}`;
+}
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function escAttr(s) {
+  return String(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// Infer { metric, weights, test } from test key naming conventions.
+// Explicit metricMeta entries take precedence; falls back to parsing key name.
+
+const KNOWN_WEIGHTS = new Set(['flat', '5x5x5']);
+
+// Split "prior-test-flat" → { test: "prior-test", weights: "flat" }
+// If the last segment isn't a known weight, the whole string is the test name.
+function splitTestWeight(rest) {
+  const lastDash = rest.lastIndexOf('-');
+  if (lastDash >= 0) {
+    const maybeWeight = rest.slice(lastDash + 1);
+    if (KNOWN_WEIGHTS.has(maybeWeight)) {
+      return { test: rest.slice(0, lastDash), weights: maybeWeight };
+    }
+  }
+  return { test: rest, weights: 'flat' };
+}
+
+function getEffectiveMeta(testKey) {
+  if (metricMeta[testKey]) return metricMeta[testKey];
+  if (testKey.startsWith('post-lml-')) {
+    const { test, weights } = splitTestWeight(testKey.slice('post-lml-'.length));
+    return { metric: 'lml', weights, test };
+  }
+  if (testKey.startsWith('nrmse-')) {
+    const { test, weights } = splitTestWeight(testKey.slice('nrmse-'.length));
+    return { metric: 'nrmse', weights, test };
+  }
+  if (testKey.startsWith('mse-')) {
+    const { test, weights } = splitTestWeight(testKey.slice('mse-'.length));
+    return { metric: 'mse', weights, test };
+  }
+  return null;
+}
+
+// ── Info modal ─────────────────────────────────────────────────────────────────
+
+function toggleInfo() {
+  document.getElementById('modal-backdrop').classList.toggle('open');
+}
+
+function closeInfo(e) {
+  // Close only when clicking the backdrop itself, not the modal content
+  if (e.target === document.getElementById('modal-backdrop')) toggleInfo();
+}
+</script>
+</body>
+</html>

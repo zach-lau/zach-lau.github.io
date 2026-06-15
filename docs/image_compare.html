@@ -1,5 +1,4 @@
 ---
-title: Image Compare Tool
 permalink: /image_compare
 ---
 
@@ -66,6 +65,21 @@ permalink: /image_compare
   }
   .logo span { color: var(--text-dim); font-weight: 400; }
 
+  #btn-upload {
+    font-size: 11px;
+    padding: 4px 11px;
+    white-space: nowrap;
+  }
+  #root-name {
+    font-size: 11px;
+    color: var(--text-dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 200px;
+  }
+  #root-name.loaded { color: var(--text); }
+
   .nav-controls {
     display: flex;
     align-items: center;
@@ -130,7 +144,10 @@ permalink: /image_compare
     overflow: hidden;
     flex: 1;
     min-width: 0;
+    transition: opacity 0.15s;
   }
+  .pane.dragging { opacity: 0.35; }
+  .pane.drag-over { outline: 2px solid var(--pane-color); outline-offset: -2px; }
 
   .pane-header {
     display: flex;
@@ -139,7 +156,16 @@ permalink: /image_compare
     padding: 7px 10px;
     border-bottom: 1px solid var(--border);
     background: var(--surface);
+    cursor: grab;
+  }
+  .pane-header:active { cursor: grabbing; }
+
+  .drag-handle {
+    color: var(--muted);
+    font-size: 12px;
     flex-shrink: 0;
+    user-select: none;
+    letter-spacing: -1px;
   }
 
   .pane-label {
@@ -152,17 +178,32 @@ permalink: /image_compare
     text-align: center;
   }
 
-  .folder-btn {
+  .subfolder-select {
     flex: 1;
-    text-align: left;
+    min-width: 0;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23555560' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    padding-right: 24px;
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 11px;
-    color: var(--text-dim);
-    padding: 3px 8px;
+    transition: border-color 0.12s, color 0.12s;
   }
-  .folder-btn.has-folder { color: var(--text); }
+  .subfolder-select:focus { outline: none; border-color: var(--muted); }
+  .subfolder-select:hover:not(:disabled) { border-color: var(--muted); color: var(--text); }
+  .subfolder-select.has-value { color: var(--text); }
+  .subfolder-select:disabled { opacity: 0.35; cursor: default; }
+  .subfolder-select option { background: #1c1c20; color: var(--text); }
 
   .file-count {
     font-size: 10px;
@@ -298,9 +339,13 @@ permalink: /image_compare
 </head>
 <body>
 
+<input type="file" id="root-input" webkitdirectory multiple accept="image/*">
+
 <header>
   <div class="logo">Image<span>Viewer</span></div>
-  <button id="btn-add-pane" onclick="addPane()">+ add folder</button>
+  <button id="btn-upload" onclick="document.getElementById('root-input').click()">Upload folder</button>
+  <span id="root-name">no folder loaded</span>
+  <button id="btn-add-pane" onclick="addPane()">+ add pane</button>
   <div class="nav-controls">
     <button id="btn-prev" disabled>◀ prev</button>
     <div class="idx-display" id="idx-display">– / –</div>
@@ -317,30 +362,178 @@ permalink: /image_compare
 </div>
 
 <script>
+// ── Shared Results Store (IndexedDB) ─────────────────────────────────────────
+
+const ResultsStore = (() => {
+  const DB = 'europa-results', STORE = 'entries', IMG_STORE = 'images';
+  function open() {
+    return new Promise((res, rej) => {
+      const r = indexedDB.open(DB, 2);
+      r.onupgradeneeded = e => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains(STORE))     db.createObjectStore(STORE);
+        if (!db.objectStoreNames.contains(IMG_STORE)) db.createObjectStore(IMG_STORE);
+      };
+      r.onsuccess = e => res(e.target.result);
+      r.onerror   = e => rej(e.target.error);
+    });
+  }
+  return {
+    async loadImages() {
+      const db = await open();
+      return new Promise((res, rej) => {
+        const r = db.transaction(IMG_STORE,'readonly').objectStore(IMG_STORE).get('data');
+        r.onsuccess = e => { db.close(); res(e.target.result ?? null); };
+        r.onerror   = e => rej(e.target.error);
+      });
+    },
+    async saveImages(data) {
+      const db = await open();
+      return new Promise((res, rej) => {
+        const tx = db.transaction(IMG_STORE, 'readwrite');
+        tx.objectStore(IMG_STORE).put(data, 'data');
+        tx.oncomplete = () => { db.close(); res(); };
+        tx.onerror    = e => rej(e.target.error);
+      });
+    },
+  };
+})();
+
 const LABELS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 const NUM_ACCENT_CLASSES = 6;
+
+// Global subfolder store: { subfolderName: { files: {basename: objectURL}, names: [basename] } }
+let subfolders = {};
+let rootFolderName = '';
 
 let panes = [];
 let masterList = [];
 let currentIdx = 0;
 let nextId = 0;
+let dragSrcId = null;
+
+// ── Root folder upload ────────────────────────────────────────────────────────
+
+document.getElementById('root-input').addEventListener('change', function(e) {
+  Object.values(subfolders).forEach(sf => Object.values(sf.files).forEach(URL.revokeObjectURL));
+  subfolders = {};
+
+  const fileList = Array.from(e.target.files).filter(f => f.type.startsWith('image/'));
+  if (!fileList.length) return;
+
+  rootFolderName = fileList[0].webkitRelativePath
+    ? fileList[0].webkitRelativePath.split('/')[0]
+    : 'uploaded';
+
+  const idbSubfolders = {};
+  fileList.forEach(f => {
+    const parts = f.webkitRelativePath ? f.webkitRelativePath.split('/') : [rootFolderName, f.name];
+    if (parts.length < 3) return;
+    const subKey = parts[1];
+    const basename = parts[parts.length - 1];
+
+    if (!subfolders[subKey])    subfolders[subKey]    = { files: {}, names: [] };
+    if (!idbSubfolders[subKey]) idbSubfolders[subKey] = { files: {}, names: [] };
+    subfolders[subKey].files[basename]    = URL.createObjectURL(f);
+    idbSubfolders[subKey].files[basename] = f;  // store File (Blob) for IDB
+    subfolders[subKey].names.push(basename);
+    idbSubfolders[subKey].names.push(basename);
+  });
+
+  Object.values(subfolders).forEach(sf => {
+    sf.names.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+  });
+  Object.values(idbSubfolders).forEach(sf => {
+    sf.names.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+  });
+
+  ResultsStore.saveImages({ subfolders: idbSubfolders, rootName: rootFolderName, savedAt: Date.now() }).catch(() => {});
+
+  const sfKeys = sortedSubfolderKeys();
+  panes.forEach((pane, i) => {
+    pane.selectedSubfolder = sfKeys[i % sfKeys.length] || null;
+  });
+
+  const rootNameEl = document.getElementById('root-name');
+  rootNameEl.textContent = rootFolderName + '/ (' + sfKeys.length + ' subfolders)';
+  rootNameEl.classList.add('loaded');
+
+  currentIdx = 0;
+  rebuildAll();
+  renderWorkspace();
+  e.target.value = '';
+});
+
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    const cached = await ResultsStore.loadImages();
+    if (!cached?.subfolders || !Object.keys(cached.subfolders).length) return;
+
+    Object.values(subfolders).forEach(sf => Object.values(sf.files).forEach(URL.revokeObjectURL));
+    subfolders = {};
+
+    for (const [sfName, sf] of Object.entries(cached.subfolders)) {
+      subfolders[sfName] = { files: {}, names: sf.names };
+      for (const [basename, blob] of Object.entries(sf.files)) {
+        subfolders[sfName].files[basename] = URL.createObjectURL(blob);
+      }
+    }
+
+    rootFolderName = cached.rootName || 'cached';
+    const sfKeys = sortedSubfolderKeys();
+    const ago = cached.savedAt ? Math.round((Date.now() - cached.savedAt) / 60000) : null;
+    const agoStr = ago === null ? '' : ago < 1 ? ', just now' : ago < 60 ? `, ${ago}m ago` : `, ${Math.round(ago / 60)}h ago`;
+    const rootNameEl = document.getElementById('root-name');
+    rootNameEl.textContent = rootFolderName + '/ (' + sfKeys.length + ' subfolders' + agoStr + ')';
+    rootNameEl.classList.add('loaded');
+
+    panes.forEach((pane, i) => {
+      pane.selectedSubfolder = sfKeys[i % sfKeys.length] || null;
+    });
+
+    currentIdx = 0;
+    rebuildAll();
+    renderWorkspace();
+  } catch (_) {}
+});
+
+function sortedSubfolderKeys() {
+  return Object.keys(subfolders).sort((a, b) =>
+    a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
+  );
+}
+
+// ── Pane data helper ──────────────────────────────────────────────────────────
+
+function getPaneData(pane) {
+  if (pane.selectedSubfolder && subfolders[pane.selectedSubfolder]) {
+    return subfolders[pane.selectedSubfolder];
+  }
+  return { files: {}, names: [] };
+}
 
 // ── Pane CRUD ─────────────────────────────────────────────────────────────────
 
 function addPane() {
   const id = nextId++;
-  panes.push({ id, files: {}, names: [], folderName: '' });
+  const sfKeys = sortedSubfolderKeys();
+  const used = new Set(panes.map(p => p.selectedSubfolder));
+  const available = sfKeys.find(k => !used.has(k)) || sfKeys[0] || null;
+  panes.push({ id, selectedSubfolder: available });
   rebuildAll();
   renderWorkspace();
-  // Auto-open folder picker for the new pane
-  const inp = document.getElementById(`input-${id}`);
-  if (inp) inp.click();
 }
 
 function removePane(id) {
-  const pane = panes.find(p => p.id === id);
-  if (pane) Object.values(pane.files).forEach(URL.revokeObjectURL);
   panes = panes.filter(p => p.id !== id);
+  rebuildAll();
+  renderWorkspace();
+}
+
+function onSubfolderChange(id, value) {
+  const pane = panes.find(p => p.id === id);
+  if (!pane) return;
+  pane.selectedSubfolder = value || null;
   rebuildAll();
   renderWorkspace();
 }
@@ -350,6 +543,9 @@ function removePane(id) {
 function renderWorkspace() {
   const ws = document.getElementById('workspace');
   ws.innerHTML = '';
+
+  const sfKeys = sortedSubfolderKeys();
+  const hasSubfolders = sfKeys.length > 0;
 
   panes.forEach((pane, i) => {
     if (i > 0) {
@@ -361,22 +557,36 @@ function renderWorkspace() {
     const label = LABELS[i] || String(i + 1);
     const accentClass = `pane-accent-${i % NUM_ACCENT_CLASSES}`;
     const canRemove = panes.length > 1;
+    const { names } = getPaneData(pane);
+
+    // Build select options
+    const optionsHtml = hasSubfolders
+      ? '<option value="">— pick subfolder —</option>' +
+        sfKeys.map(sf =>
+          `<option value="${escHtml(sf)}"${pane.selectedSubfolder === sf ? ' selected' : ''}>${escHtml(sf)}</option>`
+        ).join('')
+      : '<option value="">no folder loaded</option>';
 
     const el = document.createElement('div');
     el.className = `pane ${accentClass}`;
     el.id = `pane-el-${pane.id}`;
     el.innerHTML = `
-      <div class="pane-header">
+      <div class="pane-header" title="Drag to reorder">
+        <span class="drag-handle">⠿</span>
         <span class="pane-label">${label}</span>
-        <button class="folder-btn ${pane.folderName ? 'has-folder' : ''}" id="folder-btn-${pane.id}"
-          onclick="openFolder(${pane.id})">${pane.folderName || 'click to open folder…'}</button>
-        <span class="file-count" id="count-${pane.id}">${pane.names.length ? pane.names.length + ' files' : ''}</span>
+        <select class="subfolder-select${pane.selectedSubfolder ? ' has-value' : ''}"
+          id="sf-select-${pane.id}"
+          ${hasSubfolders ? '' : 'disabled'}
+          onchange="onSubfolderChange(${pane.id}, this.value)">
+          ${optionsHtml}
+        </select>
+        <span class="file-count" id="count-${pane.id}">${names.length ? names.length + ' files' : ''}</span>
         ${canRemove ? `<button class="remove-btn" onclick="removePane(${pane.id})" title="Remove pane">✕</button>` : ''}
       </div>
       <div class="image-area" id="img-area-${pane.id}">
         <div class="state-msg" id="state-${pane.id}">
           <div class="icon">📁</div>
-          <div>Open a folder to begin</div>
+          <div>Upload a folder and pick a subfolder</div>
         </div>
         <img id="img-${pane.id}" style="display:none" title="Click to zoom" onclick="zoomImg(this.src)">
         <div class="filename-bar" id="fname-${pane.id}" style="display:none"></div>
@@ -385,15 +595,41 @@ function renderWorkspace() {
     `;
     ws.appendChild(el);
 
-    // File input (must live outside the pane for webkitdirectory to work cross-browser)
-    const inp = document.createElement('input');
-    inp.type = 'file';
-    inp.id = `input-${pane.id}`;
-    inp.setAttribute('webkitdirectory', '');
-    inp.multiple = true;
-    inp.accept = 'image/*';
-    inp.addEventListener('change', e => onFolderSelected(pane.id, e));
-    document.body.appendChild(inp);
+    // Drag-to-reorder
+    const header = el.querySelector('.pane-header');
+    header.draggable = true;
+    // Prevent drag from starting on interactive children
+    el.querySelectorAll('select, button, input').forEach(ch => ch.draggable = false);
+
+    header.addEventListener('dragstart', e => {
+      dragSrcId = pane.id;
+      el.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    el.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      if (dragSrcId !== null && dragSrcId !== pane.id) el.classList.add('drag-over');
+    });
+    el.addEventListener('dragleave', e => {
+      if (!el.contains(e.relatedTarget)) el.classList.remove('drag-over');
+    });
+    el.addEventListener('drop', e => {
+      e.preventDefault();
+      el.classList.remove('drag-over');
+      if (dragSrcId === null || dragSrcId === pane.id) return;
+      const srcIdx = panes.findIndex(p => p.id === dragSrcId);
+      const dstIdx = panes.findIndex(p => p.id === pane.id);
+      if (srcIdx < 0 || dstIdx < 0) return;
+      const [moved] = panes.splice(srcIdx, 1);
+      panes.splice(dstIdx, 0, moved);
+      dragSrcId = null;
+      renderWorkspace();
+    });
+    header.addEventListener('dragend', () => {
+      dragSrcId = null;
+      document.querySelectorAll('.pane').forEach(p => p.classList.remove('dragging', 'drag-over'));
+    });
   });
 
   // Restore current visual state
@@ -405,45 +641,14 @@ function renderWorkspace() {
   });
 }
 
-// ── Folder selection ──────────────────────────────────────────────────────────
-
-function openFolder(id) {
-  const inp = document.getElementById(`input-${id}`);
-  if (inp) inp.click();
-}
-
-function onFolderSelected(id, e) {
-  const pane = panes.find(p => p.id === id);
-  if (!pane) return;
-
-  const fileList = Array.from(e.target.files).filter(f => f.type.startsWith('image/'));
-  if (!fileList.length) return;
-
-  Object.values(pane.files).forEach(URL.revokeObjectURL);
-  pane.files = {};
-  pane.names = [];
-
-  pane.folderName = fileList[0].webkitRelativePath
-    ? fileList[0].webkitRelativePath.split('/')[0]
-    : `folder-${id}`;
-
-  fileList.forEach(f => {
-    const name = f.webkitRelativePath ? f.webkitRelativePath.split('/').pop() : f.name;
-    pane.files[name] = URL.createObjectURL(f);
-    pane.names.push(name);
-  });
-
-  pane.names.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
-
-  rebuildAll();
-  renderWorkspace();
-  e.target.value = '';
+function escHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 // ── Master list ───────────────────────────────────────────────────────────────
 
 function rebuildAll() {
-  const all = new Set(panes.flatMap(p => p.names));
+  const all = new Set(panes.flatMap(p => getPaneData(p).names));
   masterList = [...all].sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
   currentIdx = Math.min(currentIdx, Math.max(0, masterList.length - 1));
   updateNavControls();
@@ -479,34 +684,37 @@ document.getElementById('btn-next').addEventListener('click', () => goTo(current
 function renderPane(id, name) {
   const pane = panes.find(p => p.id === id);
   if (!pane) return;
+  const { files, names } = getPaneData(pane);
   const img     = document.getElementById(`img-${id}`);
   const stateEl = document.getElementById(`state-${id}`);
   const fnameEl = document.getElementById(`fname-${id}`);
   if (!img) return;
 
-  if (!pane.names.length) {
+  if (!names.length) {
     img.style.display = 'none';
     fnameEl.style.display = 'none';
     stateEl.style.display = 'flex';
     stateEl.className = 'state-msg';
-    stateEl.innerHTML = `<div class="icon">📁</div><div>Open a folder to begin</div>`;
+    stateEl.innerHTML = pane.selectedSubfolder
+      ? `<div class="icon">📂</div><div>Subfolder is empty</div>`
+      : `<div class="icon">📁</div><div>Upload a folder and pick a subfolder</div>`;
     return;
   }
 
-  if (!name || !pane.files[name]) {
+  if (!name || !files[name]) {
     img.style.display = 'none';
     fnameEl.style.display = 'none';
     stateEl.style.display = 'flex';
     stateEl.className = 'state-msg dne';
     const label = name || '—';
-    stateEl.innerHTML = `<div class="icon">✕</div><div style="font-weight:600;word-break:break-all">${label}</div><div style="font-size:10px;margin-top:2px">not in this folder</div>`;
+    stateEl.innerHTML = `<div class="icon">✕</div><div style="font-weight:600;word-break:break-all">${escHtml(label)}</div><div style="font-size:10px;margin-top:2px">not in this subfolder</div>`;
   } else {
     stateEl.style.display = 'none';
     img.style.display = 'block';
     fnameEl.style.display = 'block';
     img.classList.add('loading');
     img.onload = () => img.classList.remove('loading');
-    img.src = pane.files[name];
+    img.src = files[name];
     fnameEl.textContent = name;
   }
 }
@@ -518,12 +726,13 @@ function renderThumbs(id) {
   if (!bar) return;
   const pane = panes.find(p => p.id === id);
   if (!pane) return;
+  const { files } = getPaneData(pane);
   bar.innerHTML = '';
   masterList.forEach(name => {
     const pill = document.createElement('button');
-    pill.className = 'thumb-pill' + (pane.files[name] ? '' : ' ghost');
+    pill.className = 'thumb-pill' + (files[name] ? '' : ' ghost');
     pill.textContent = name;
-    pill.title = pane.files[name] ? name : `${name} — not in this folder`;
+    pill.title = files[name] ? name : `${name} — not in this subfolder`;
     pill.addEventListener('click', () => {
       const idx = masterList.indexOf(name);
       if (idx >= 0) goTo(idx);
@@ -548,7 +757,7 @@ function highlightThumb(id, name) {
 // ── Keyboard ──────────────────────────────────────────────────────────────────
 
 document.addEventListener('keydown', e => {
-  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
   if (e.key === 'ArrowLeft'  || e.key === 'a' || e.key === 'A') { e.preventDefault(); goTo(currentIdx - 1); }
   if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') { e.preventDefault(); goTo(currentIdx + 1); }
   if (e.key === ' ') { e.preventDefault(); zoomCurrent(); }
@@ -566,7 +775,8 @@ function zoomCurrent() {
   const name = masterList[currentIdx];
   if (!name) return;
   for (const p of panes) {
-    if (p.files[name]) { zoomImg(p.files[name]); return; }
+    const { files } = getPaneData(p);
+    if (files[name]) { zoomImg(files[name]); return; }
   }
 }
 
@@ -577,8 +787,8 @@ function closeZoom() {
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 
 panes = [
-  { id: nextId++, files: {}, names: [], folderName: '' },
-  { id: nextId++, files: {}, names: [], folderName: '' },
+  { id: nextId++, selectedSubfolder: null },
+  { id: nextId++, selectedSubfolder: null },
 ];
 renderWorkspace();
 </script>

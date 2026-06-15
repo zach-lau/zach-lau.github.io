@@ -1,0 +1,1753 @@
+---
+permalink: /predictive_mean
+---
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Predictive Mean</title>
+<script src="https://cdn.jsdelivr.net/npm/@msgpack/msgpack@2.8.0/dist.es5+umd/msgpack.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600&family=Syne:wght@400;700;800&display=swap');
+
+  :root {
+    --bg: #0e0e10;
+    --surface: #17171a;
+    --panel: #1c1c20;
+    --border: #2a2a2f;
+    --muted: #555560;
+    --text: #e8e8ed;
+    --text-dim: #888890;
+    --accent: #7ee8a2;
+    --radius: 6px;
+    --mono: 'JetBrains Mono', monospace;
+    --display: 'Syne', sans-serif;
+    --sidebar-w: 260px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Header ── */
+  header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+  .logo {
+    font-family: var(--display);
+    font-weight: 800;
+    font-size: 15px;
+    letter-spacing: -0.5px;
+    color: var(--accent);
+    white-space: nowrap;
+  }
+  .logo span { color: var(--text-dim); font-weight: 400; }
+  .back-link {
+    font-size: 11px;
+    color: var(--text-dim);
+    text-decoration: none;
+    border: 1px solid var(--border);
+    padding: 3px 8px;
+    border-radius: var(--radius);
+    transition: all 0.12s;
+  }
+  .back-link:hover { color: var(--text); border-color: var(--muted); }
+  #status-text {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-left: auto;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #status-text.loaded { color: var(--text); }
+
+  /* ── Buttons ── */
+  button {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 5px 11px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s;
+  }
+  button:hover:not(:disabled) { background: var(--border); border-color: var(--muted); }
+  button:active:not(:disabled) { background: var(--muted); }
+  button:disabled { opacity: 0.3; cursor: default; }
+  input[type="file"] { display: none; }
+
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* ── Layout ── */
+  .workspace { display: flex; flex: 1; overflow: hidden; }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: var(--sidebar-w);
+    flex-shrink: 0;
+    border-right: 1px solid var(--border);
+    background: var(--surface);
+    overflow-y: auto;
+    padding: 14px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  .section-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+  }
+
+  /* ── Run list ── */
+  .run-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: 4px;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+  .run-item {
+    width: 100%;
+    text-align: left;
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: var(--radius);
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-family: var(--mono);
+    transition: all 0.12s;
+  }
+  .run-item:hover { background: var(--panel); color: var(--text); border-color: var(--border); }
+  .run-item.active { background: var(--panel); border-color: var(--border); color: var(--accent); }
+
+  .theta-item {
+    width: 100%;
+    text-align: left;
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: var(--radius);
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-family: var(--mono);
+    transition: all 0.12s;
+    flex-shrink: 0;
+  }
+  .theta-item:hover { background: var(--panel); color: var(--text); border-color: var(--border); }
+  .theta-item.active { background: var(--panel); border-color: var(--border); color: var(--accent); }
+
+  /* ── Pills ── */
+  .pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+  .pill {
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all 0.12s;
+    background: transparent;
+    font-family: var(--mono);
+    user-select: none;
+  }
+  .pill:hover { border-color: var(--muted); color: var(--text); }
+  .pill.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #0e0e10;
+  }
+  .pill:disabled, .pill.disabled {
+    opacity: 0.3;
+    cursor: default;
+    pointer-events: none;
+  }
+
+  /* ── Sliders ── */
+  .slider-row {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .slider-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+  }
+  .slider-name {
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+  .slider-val {
+    font-size: 12px;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+  input[type="range"] {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+  }
+  input[type="range"]:disabled { opacity: 0.3; cursor: default; }
+
+  /* ── Fixed params ── */
+  .fixed-params {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .fixed-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+  }
+  .fixed-key { color: var(--text-dim); }
+  .fixed-val { color: var(--muted); }
+
+  /* ── Right panel ── */
+  .right-panel {
+    width: 280px;
+    flex-shrink: 0;
+    border-left: 1px solid var(--border);
+    background: var(--surface);
+    overflow-y: auto;
+    padding: 14px 12px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Main area ── */
+  .main {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 24px;
+    overflow: hidden;
+  }
+
+  .canvas-container {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    height: 100%;
+    max-height: 100%;
+  }
+
+  .canvas-row {
+    display: flex;
+    gap: 12px;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .plot-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    aspect-ratio: 1;
+    max-height: 100%;
+  }
+
+  .plot-canvas {
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    display: block;
+  }
+
+  .plot-placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 12px;
+    color: var(--text-dim);
+    font-size: 12px;
+    pointer-events: none;
+  }
+  .plot-placeholder-icon { font-size: 40px; }
+
+  .colorbar-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+    align-self: stretch;
+  }
+  .cb-label {
+    font-size: 10px;
+    color: var(--text-dim);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .colorbar-canvas {
+    width: 18px;
+    flex: 1;
+    max-height: calc(100% - 50px);
+    border-radius: 3px;
+    display: block;
+  }
+
+  /* ── Render overlay (shown when params are dirty) ── */
+  .render-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(14,14,16,0.55);
+    display: none;
+    align-items: center;
+    justify-content: center;
+  }
+  .render-overlay.visible { display: flex; }
+  .render-btn {
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: 14px;
+    padding: 10px 28px;
+    background: var(--accent);
+    color: #0e0e10;
+    border: none;
+    border-radius: var(--radius);
+    cursor: pointer;
+    letter-spacing: -0.3px;
+    transition: opacity 0.12s;
+  }
+  .render-btn:hover { opacity: 0.85; }
+
+  .loading-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(14,14,16,0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    font-size: 13px;
+    color: var(--text);
+    display: none;
+  }
+  .loading-overlay.visible { display: flex; }
+  .spinner {
+    width: 20px; height: 20px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-right: 10px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Europa<span> Visualization</span></div>
+  <a class="back-link" href="/">← Home</a>
+  <span id="status-text">no model loaded</span>
+</header>
+
+<div class="workspace">
+
+  <!-- ── Sidebar ── -->
+  <aside class="sidebar">
+
+    <div>
+      <div class="section-label">Model</div>
+      <button onclick="document.getElementById('folder-input').click()" style="width:100%;margin-bottom:8px">
+        Upload results folder
+      </button>
+      <div class="run-list" id="run-list">
+        <span style="font-size:11px;color:var(--text-dim)">no folder loaded</span>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-label">Display</div>
+      <button id="colorbar-sync-btn" onclick="toggleSyncColorbar()" style="width:100%;font-size:11px">
+        Colorbar: All Synced
+      </button>
+    </div>
+
+    <div>
+      <div class="section-label">Output</div>
+      <div class="pills" id="dim-pills">
+        <span class="pill disabled">ρ</span>
+        <span class="pill disabled">vx</span>
+        <span class="pill disabled">vy</span>
+        <span class="pill disabled">vz</span>
+        <span class="pill disabled">bx</span>
+        <span class="pill disabled">by</span>
+        <span class="pill disabled">bz</span>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-label">Axis</div>
+      <div class="pills" id="axis-pills">
+        <span class="pill disabled">x1</span>
+        <span class="pill disabled">x2</span>
+        <span class="pill disabled">x3</span>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-label">Position</div>
+      <div class="pills" id="pos-pills">
+        <span class="pill disabled">—</span>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-label">Parameters</div>
+      <div style="display:flex;flex-direction:column;gap:14px">
+
+        <div class="slider-row">
+          <div class="slider-header">
+            <span class="slider-name">ρ (density)</span>
+            <span class="slider-val" id="val-rho">5.0 cm⁻³</span>
+          </div>
+          <input type="range" id="sl-rho" min="2" max="10" step="0.1" value="5" disabled
+                 oninput="updateSliderDisplay()" onchange="onSliderRelease()">
+          <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-dim)">
+            <span>2 cm⁻³</span><span>10 cm⁻³</span>
+          </div>
+        </div>
+
+        <div class="slider-row">
+          <div class="slider-header">
+            <span class="slider-name">Vx (velocity)</span>
+            <span class="slider-val" id="val-vx">500 km/s</span>
+          </div>
+          <input type="range" id="sl-vx" min="300" max="700" step="5" value="500" disabled
+                 oninput="updateSliderDisplay()" onchange="onSliderRelease()">
+          <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-dim)">
+            <span>300 km/s</span><span>700 km/s</span>
+          </div>
+        </div>
+
+        <div class="slider-row">
+          <div class="slider-header">
+            <span class="slider-name">By (magnetic)</span>
+            <span class="slider-val" id="val-by">0.0 nT</span>
+          </div>
+          <input type="range" id="sl-by" min="-10" max="10" step="0.25" value="0" disabled
+                 oninput="updateSliderDisplay()" onchange="onSliderRelease()">
+          <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-dim)">
+            <span>−10 nT</span><span>+10 nT</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div>
+      <div class="section-label">Fixed</div>
+      <div class="fixed-params">
+        <div class="fixed-row"><span class="fixed-key">Bx</span><span class="fixed-val">0 T</span></div>
+        <div class="fixed-row"><span class="fixed-key">Bz</span><span class="fixed-val">0 T</span></div>
+        <div class="fixed-row"><span class="fixed-key">P</span><span class="fixed-val">3 nPa</span></div>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- ── Main ── -->
+  <main class="main">
+    <div class="canvas-container">
+
+      <!-- Top row: Prediction + Test -->
+      <div class="canvas-row">
+
+        <div style="display:flex;flex-direction:column;gap:6px;min-width:0;min-height:0;flex:1">
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--text-dim);text-align:center">Prediction</div>
+          <div id="pred-params" style="font-size:10px;color:var(--muted);text-align:center;font-variant-numeric:tabular-nums"></div>
+          <div style="display:flex;gap:8px;align-items:flex-start;flex:1;min-height:0">
+            <div class="plot-wrap">
+              <canvas id="plot-canvas" class="plot-canvas" width="250" height="250"></canvas>
+              <div class="plot-placeholder" id="placeholder">
+                <div class="plot-placeholder-icon">🌌</div>
+                <div>Upload a results folder to begin</div>
+              </div>
+              <div class="render-overlay" id="render-overlay">
+                <button class="render-btn" onclick="computeAndRender()">Render</button>
+              </div>
+            </div>
+            <div class="colorbar-wrap">
+              <span class="cb-label" id="cb-max">—</span>
+              <canvas id="colorbar-canvas" class="colorbar-canvas" width="18" height="200"></canvas>
+              <span class="cb-label" id="cb-min">—</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:6px;min-width:0;min-height:0;flex:1">
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--text-dim);text-align:center">Test</div>
+          <div id="test-params" style="font-size:10px;color:var(--muted);text-align:center;font-variant-numeric:tabular-nums"></div>
+          <div style="display:flex;gap:8px;align-items:flex-start;flex:1;min-height:0">
+            <div class="plot-wrap">
+              <canvas id="test-canvas" class="plot-canvas" width="250" height="250"></canvas>
+              <div class="plot-placeholder" id="placeholder-test">
+                <div class="plot-placeholder-icon">🌌</div>
+                <div>Upload a results folder to begin</div>
+              </div>
+            </div>
+            <div class="colorbar-wrap">
+              <span class="cb-label" id="cb-max-test">—</span>
+              <canvas id="colorbar-canvas-test" class="colorbar-canvas" width="18" height="200"></canvas>
+              <span class="cb-label" id="cb-min-test">—</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Bottom row: 3 nearest training panels -->
+      <div class="canvas-row" style="flex: 0.6">
+
+        <div style="display:flex;flex-direction:column;gap:6px;min-width:0;min-height:0;flex:1">
+          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.4px;color:var(--text-dim);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" id="y-label0">Nearest θ 1</div>
+          <div id="y-params-0" style="font-size:9px;color:var(--muted);text-align:center;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+          <div style="display:flex;gap:8px;align-items:flex-start;flex:1;min-height:0">
+            <div class="plot-wrap">
+              <canvas id="plot-canvas-y0" class="plot-canvas" width="250" height="250"></canvas>
+              <div class="plot-placeholder" id="placeholder-y0">
+                <div class="plot-placeholder-icon">🌌</div>
+                <div>Upload a results folder to begin</div>
+              </div>
+            </div>
+            <div class="colorbar-wrap">
+              <span class="cb-label" id="cb-max-y0">—</span>
+              <canvas id="colorbar-canvas-y0" class="colorbar-canvas" width="18" height="200"></canvas>
+              <span class="cb-label" id="cb-min-y0">—</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:6px;min-width:0;min-height:0;flex:1">
+          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.4px;color:var(--text-dim);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" id="y-label1">Nearest θ 2</div>
+          <div id="y-params-1" style="font-size:9px;color:var(--muted);text-align:center;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+          <div style="display:flex;gap:8px;align-items:flex-start;flex:1;min-height:0">
+            <div class="plot-wrap">
+              <canvas id="plot-canvas-y1" class="plot-canvas" width="250" height="250"></canvas>
+              <div class="plot-placeholder" id="placeholder-y1">
+                <div class="plot-placeholder-icon">🌌</div>
+                <div>Upload a results folder to begin</div>
+              </div>
+            </div>
+            <div class="colorbar-wrap">
+              <span class="cb-label" id="cb-max-y1">—</span>
+              <canvas id="colorbar-canvas-y1" class="colorbar-canvas" width="18" height="200"></canvas>
+              <span class="cb-label" id="cb-min-y1">—</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:6px;min-width:0;min-height:0;flex:1">
+          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.4px;color:var(--text-dim);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" id="y-label2">Nearest θ 3</div>
+          <div id="y-params-2" style="font-size:9px;color:var(--muted);text-align:center;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+          <div style="display:flex;gap:8px;align-items:flex-start;flex:1;min-height:0">
+            <div class="plot-wrap">
+              <canvas id="plot-canvas-y2" class="plot-canvas" width="250" height="250"></canvas>
+              <div class="plot-placeholder" id="placeholder-y2">
+                <div class="plot-placeholder-icon">🌌</div>
+                <div>Upload a results folder to begin</div>
+              </div>
+            </div>
+            <div class="colorbar-wrap">
+              <span class="cb-label" id="cb-max-y2">—</span>
+              <canvas id="colorbar-canvas-y2" class="colorbar-canvas" width="18" height="200"></canvas>
+              <span class="cb-label" id="cb-min-y2">—</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </main>
+
+  <!-- ── Right panel: parameter space ── -->
+  <aside class="right-panel">
+    <div class="pills" style="margin-bottom:14px">
+      <button class="pill" id="mode-train" onclick="setPointMode('train')">Training</button>
+      <button class="pill active" id="mode-test" onclick="setPointMode('test')">Test</button>
+    </div>
+    <div class="section-label" style="margin-bottom:10px">Parameter Space</div>
+    <div style="display:flex;flex-direction:column;gap:10px;flex-shrink:0">
+      <canvas id="param-plot-0" width="260" height="180" style="width:100%;border-radius:3px;display:block"></canvas>
+      <canvas id="param-plot-1" width="260" height="180" style="width:100%;border-radius:3px;display:block"></canvas>
+      <canvas id="param-plot-2" width="260" height="180" style="width:100%;border-radius:3px;display:block"></canvas>
+    </div>
+    <div class="section-label" id="point-list-label" style="margin-top:16px;margin-bottom:6px">Training Points</div>
+    <div id="theta-list" style="display:flex;flex-direction:column;gap:2px">
+      <span style="font-size:11px;color:var(--text-dim)">no model loaded</span>
+    </div>
+  </aside>
+
+</div>
+
+<div class="loading-overlay" id="loading">
+  <div class="spinner"></div>
+  <span id="loading-text">Loading…</span>
+</div>
+
+<input type="file" id="folder-input" webkitdirectory multiple>
+
+<script>
+// ── Gzip decompressor (browser-native DecompressionStream) ───────────────────
+
+async function gzipDecompress(buf) {
+  const ds     = new DecompressionStream('gzip');
+  const writer = ds.writable.getWriter();
+  const reader = ds.readable.getReader();
+  writer.write(buf instanceof Uint8Array ? buf : new Uint8Array(buf));
+  writer.close();
+  const chunks = [];
+  let total = 0;
+  for (let r; !(r = await reader.read()).done;) {
+    chunks.push(r.value); total += r.value.length;
+  }
+  const out = new Uint8Array(total);
+  let off = 0;
+  for (const c of chunks) { out.set(c, off); off += c.length; }
+  return out;
+}
+
+// ── Colormap (viridis) ───────────────────────────────────────────────────────
+
+const VIRIDIS = [
+  [68,1,84],[72,35,116],[64,67,135],[52,94,141],[41,120,142],
+  [32,144,140],[34,168,132],[68,190,112],[121,209,81],[189,223,38],[253,231,37]
+];
+
+function sampleColormap(t, cm) {
+  const n = cm.length - 1;
+  const idx = Math.min(Math.max(t * n, 0), n - 1e-9);
+  const lo = Math.floor(idx), hi = lo + 1;
+  const f = idx - lo;
+  return [
+    Math.round(cm[lo][0] + f * (cm[hi][0] - cm[lo][0])),
+    Math.round(cm[lo][1] + f * (cm[hi][1] - cm[lo][1])),
+    Math.round(cm[lo][2] + f * (cm[hi][2] - cm[lo][2])),
+  ];
+}
+
+// ── Background (preprocessing.py: uncenter_scale_background) ─────────────────
+
+const CONST_MP     = 1.67262171e-24;      // proton mass, g
+const UNIT_VEL     = 4e7;                  // cm/s
+const UNIT_BFIELD  = UNIT_VEL * Math.sqrt(4 * Math.PI * CONST_MP); // Gauss
+
+function computeBackground(rho_cm3, vx_kms, by_nT) {
+  const v_mps   = vx_kms * 1e3;
+  const by_T    = by_nT  * 1e-9;
+  return [
+    rho_cm3 * CONST_MP / CONST_MP,          // orho = rho
+    v_mps   / (UNIT_VEL * 1e-2),            // ovx  = v / (4e5 m/s)
+    0,                                        // ovy
+    0,                                        // ovz
+    0 / (UNIT_BFIELD * 1e-4),               // obx (Bx=0)
+    by_T  / (UNIT_BFIELD * 1e-4),           // oby
+    0 / (UNIT_BFIELD * 1e-4),               // obz (Bz=0)
+  ];
+}
+
+// Convert slider physical values → normalized kernel space
+// scale: SW_n_cc=1e1, SW_V_mps=1e6, SW_By_T=1e-8
+function toNorm(rho_cm3, vx_kms, by_nT) {
+  return [
+    rho_cm3  / 10,     // / scale(1e1)
+    vx_kms   / 1000,   // km/s → m/s then / scale(1e6) = km/s/1000
+    by_nT    / 10,     // nT → T then / scale(1e-8) = nT/10
+  ];
+}
+
+// ── State ────────────────────────────────────────────────────────────────────
+
+const DIM_NAMES   = ['rho','vx1','vx2','vx3','Bx1','Bx2','Bx3'];
+const DIM_DISPLAY = ['ρ','vx','vy','vz','bx','by','bz'];
+const DIM_IDX     = Object.fromEntries(DIM_NAMES.map((n,i) => [n,i]));
+
+let state = {
+  runMap:       {},    // runName → { json: File|null, lz4: File[] }
+  selRun:       null,
+  theta:        null,  // Float64Array [N*3], normalized
+  N:            0,
+  paramLengths: null,  // [ell0, ell1, ell2]
+  outputScale:  1,
+  parameterOs:  1,
+  preScale:     1,     // preprocessing scale (default 1)
+  fileMap:      {},    // key: `${dim}_${axis}_${coord}` → File (rep-grid)
+  yFileMap:     {},    // key: `${dim}_${axis}_${coord}` → File (y training data)
+  yContribs:    null,  // Float64Array [N * H * W] for nearest-theta display
+  availDims:    [],
+  availAxes:    [],
+  posMap:       {},    // key: `${dim}_${axis}` → [coord strings, sorted]
+  selDim:  null,
+  selAxis: null,
+  selPos:  null,
+  contribH: 250,       // actual cross-section height from msg.shape
+  contribW: 250,       // actual cross-section width from msg.shape
+  contribs: null,      // Float64Array [N * H * W]
+  testJsonFile: null,
+  testTheta:    null,  // Float64Array [M*3], normalized
+  testM:        0,
+  testFileMap:  {},    // key: `${dim}_${axis}_${coord}` → File (test y data)
+  testContribs: null,  // Float64Array [M * H * W]
+  pointMode: 'test',   // 'train' | 'test'
+  slRho: 5,
+  slVx:  500,
+  slBy:  0,
+  syncColorbar: 'all',  // 'all' | 'pred-test' | 'individual'
+};
+
+
+// ── File parsing ─────────────────────────────────────────────────────────────
+
+function onFolderUpload(files) {
+  // Group files by their immediate subfolder (the run name).
+  // webkitRelativePath: "<root>/<runName>/<filename>" or
+  //   "<root>/<runName>/cross-sections/{rep-grid|y}/<filename>"
+  const runMap = {};
+  state.testFileMap = {};
+  state.testJsonFile = null;
+  for (const f of files) {
+    // test.json (anywhere in the upload) carries test-set theta values
+    if (f.name === 'test.json') { state.testJsonFile = f; continue; }
+
+    const parts = f.webkitRelativePath ? f.webkitRelativePath.split('/') : [f.name];
+    const crossIdx = parts.indexOf('cross-sections');
+    const runName = crossIdx > 0
+      ? parts[crossIdx - 1]
+      : (parts.length >= 3 ? parts[parts.length - 2] : '__root__');
+
+    // Test cross-sections live under a folder named 'test'
+    if (runName === 'test' && f.name.startsWith('y_') && f.name.endsWith('.msgpack.gz')) {
+      const m = f.name.match(/_([A-Za-z0-9]+)_(x[123])_([+-]\d+\.\d+)\.msgpack\.gz$/);
+      if (m) {
+        const [, dimPart, axis, coord] = m;
+        if (DIM_NAMES.includes(dimPart)) state.testFileMap[`${dimPart}_${axis}_${coord}`] = f;
+      }
+      continue;
+    }
+
+    if (!runMap[runName]) runMap[runName] = { json: null, lz4: [] };
+    if (f.name.endsWith('.json'))        runMap[runName].json = f;
+    else if (f.name.endsWith('.msgpack.gz')) runMap[runName].lz4.push(f);
+  }
+
+  // Keep only runs that have at least one lz4 file
+  state.runMap = Object.fromEntries(
+    Object.entries(runMap).filter(([, v]) => v.lz4.length > 0)
+  );
+
+  buildModelList();
+
+  // Auto-select the first run
+  const firstRun = Object.keys(state.runMap).sort()[0];
+  if (firstRun) selectRun(firstRun);
+}
+
+function buildModelList() {
+  const container = document.getElementById('run-list');
+  const runs = Object.keys(state.runMap).sort();
+  if (runs.length === 0) {
+    container.innerHTML = '<span style="font-size:11px;color:var(--text-dim)">no runs found</span>';
+    return;
+  }
+  container.innerHTML = '';
+  for (const run of runs) {
+    const btn = document.createElement('button');
+    btn.className = 'run-item' + (run === state.selRun ? ' active' : '');
+    btn.textContent = run;
+    btn.title = run;
+    btn.onclick = () => selectRun(run);
+    container.appendChild(btn);
+  }
+}
+
+async function selectRun(runName) {
+  if (runName === state.selRun) return;
+  state.selRun = runName;
+
+  // Highlight active run in list
+  for (const btn of document.querySelectorAll('.run-item')) {
+    btn.classList.toggle('active', btn.textContent === runName);
+  }
+
+  const { json: jsonFile, lz4: msgFiles } = state.runMap[runName];
+  showLoading('Loading run…');
+  try {
+    // Parse JSON
+    if (jsonFile) {
+      const json = JSON.parse(await jsonFile.text());
+      const ck = json.checkpoint || {};
+      state.paramLengths = ck.parameter_lengths || [1, 1, 1];
+      state.outputScale  = ck.output_scale || 1;
+      state.parameterOs  = ck.parameter_os  || 1;
+      state.preScale     = json.scale != null ? json.scale : 1;
+      const thetaRaw     = json.theta || [];
+      state.N            = thetaRaw.length;
+      state.theta        = new Float64Array(state.N * 3);
+      for (let i = 0; i < state.N; i++) {
+        state.theta[i*3+0] = thetaRaw[i][0];
+        state.theta[i*3+1] = thetaRaw[i][1];
+        state.theta[i*3+2] = thetaRaw[i][2];
+      }
+      document.getElementById('status-text').textContent =
+        `${runName} · N=${state.N} · ${msgFiles.length} cross-sections`;
+      document.getElementById('status-text').classList.add('loaded');
+    } else {
+      // No JSON — still show lz4 files but kernel weights will all be 1
+      state.paramLengths = [1, 1, 1];
+      state.outputScale  = 1;
+      state.preScale     = 1;
+      state.theta        = new Float64Array(0);
+      state.N            = 0;
+      document.getElementById('status-text').textContent =
+        `${runName} · no JSON · ${msgFiles.length} cross-sections`;
+    }
+
+    // Load test-set theta values
+    if (state.testJsonFile) {
+      const testJson = JSON.parse(await state.testJsonFile.text());
+      const tr = testJson.theta || [];
+      state.testM     = tr.length;
+      state.testTheta = new Float64Array(state.testM * 3);
+      for (let i = 0; i < state.testM; i++) {
+        state.testTheta[i*3+0] = tr[i][0];
+        state.testTheta[i*3+1] = tr[i][1];
+        state.testTheta[i*3+2] = tr[i][2];
+      }
+    } else {
+      state.testM = 0; state.testTheta = null;
+    }
+
+    // Catalog lz4 files by (dim, axis, coord)
+    const dimSet  = new Set();
+    const axisSet = new Set();
+    state.fileMap  = {};
+    state.yFileMap = {};
+    state.posMap   = {};
+
+    for (const f of msgFiles) {
+      const isRepGrid = f.name.startsWith('rep-grid_');
+      const isY       = f.name.startsWith('y_');
+      if (!isRepGrid && !isY) continue;
+      const m = f.name.match(/_([A-Za-z0-9]+)_(x[123])_([+-]\d+\.\d+)\.msgpack\.gz$/);
+      if (!m) continue;
+      const [, dimPart, axis, coord] = m;
+      if (!DIM_NAMES.includes(dimPart)) continue;
+      if (isRepGrid) {
+        state.fileMap[`${dimPart}_${axis}_${coord}`] = f;
+        dimSet.add(dimPart);
+        axisSet.add(axis);
+        const ak = `${dimPart}_${axis}`;
+        if (!state.posMap[ak]) state.posMap[ak] = [];
+        if (!state.posMap[ak].includes(coord)) state.posMap[ak].push(coord);
+      } else {
+        state.yFileMap[`${dimPart}_${axis}_${coord}`] = f;
+      }
+    }
+
+    for (const ak of Object.keys(state.posMap)) {
+      state.posMap[ak].sort((a, b) => parseFloat(a) - parseFloat(b));
+    }
+
+    state.availDims = DIM_NAMES.filter(d => dimSet.has(d));
+    state.availAxes = ['x1','x2','x3'].filter(a => axisSet.has(a));
+
+    // Pick sensible defaults (preserve previous selection if still valid)
+    if (!state.availDims.includes(state.selDim)) state.selDim = state.availDims[0] || null;
+    if (!state.availAxes.includes(state.selAxis)) state.selAxis = state.availAxes[0] || null;
+    const ak = state.selDim && state.selAxis ? `${state.selDim}_${state.selAxis}` : null;
+    const positions = (ak && state.posMap[ak]) || [];
+    if (!positions.includes(state.selPos)) state.selPos = positions[0] || null;
+
+    enableSliders();
+    buildPills();
+    buildPointList();
+
+    // Snap to first test point if available, else first training point
+    const snapTheta = (state.testTheta && state.testM > 0)
+      ? state.testTheta
+      : (state.theta && state.N > 0 ? state.theta : null);
+    if (snapTheta) {
+      const rho = snapTheta[0] * 10;
+      const vx  = snapTheta[1] * 1000;
+      const by  = snapTheta[2] * 10;
+      document.getElementById('sl-rho').value = rho;
+      document.getElementById('sl-vx').value  = vx;
+      document.getElementById('sl-by').value  = by;
+      document.getElementById('val-rho').textContent = rho.toFixed(1) + ' cm⁻³';
+      document.getElementById('val-vx').textContent  = Math.round(vx) + ' km/s';
+      document.getElementById('val-by').textContent  = by.toFixed(2) + ' nT';
+      state.slRho = rho; state.slVx = vx; state.slBy = by;
+    }
+
+    if (state.selPos) { await loadContribs(); computeAndRender(); }
+  } catch (err) {
+    console.error(err);
+    alert('Error loading run: ' + err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+function msgToFloat64(msg) {
+  const aligned = msg.data.slice();
+  if (msg.dtype === 'float64') {
+    return new Float64Array(aligned.buffer, 0, aligned.byteLength / 8);
+  }
+  // float32 (or anything else) — read as f32, promote to f64
+  const f32 = new Float32Array(aligned.buffer, 0, aligned.byteLength / 4);
+  return new Float64Array(f32);
+}
+
+async function loadContribs() {
+  const key  = `${state.selDim}_${state.selAxis}_${state.selPos}`;
+  const file = state.fileMap[key];
+  if (!file) { state.contribs = null; state.yContribs = null; return; }
+  showLoading('Loading contributions…');
+  try {
+    const buf    = await file.arrayBuffer();
+    const raw    = await gzipDecompress(new Uint8Array(buf));
+    const msg    = MessagePack.decode(raw);
+    const shape  = msg.shape;  // [N, 1, H, W]
+    state.contribH = shape[2];
+    state.contribW = shape[3];
+    state.contribs = msgToFloat64(msg);
+
+    const yFile = state.yFileMap[key];
+    if (yFile) {
+      const yBuf  = await yFile.arrayBuffer();
+      const yRaw  = await gzipDecompress(new Uint8Array(yBuf));
+      const yMsg  = MessagePack.decode(yRaw);
+      state.yContribs = msgToFloat64(yMsg);
+    } else {
+      state.yContribs = null;
+    }
+
+    const testFile = state.testFileMap[key];
+    if (testFile) {
+      const tBuf = await testFile.arrayBuffer();
+      const tRaw = await gzipDecompress(new Uint8Array(tBuf));
+      const tMsg = MessagePack.decode(tRaw);
+      state.testContribs = msgToFloat64(tMsg);
+    } else {
+      state.testContribs = null;
+    }
+  } finally {
+    hideLoading();
+  }
+}
+
+// ── Computation ──────────────────────────────────────────────────────────────
+
+function computeAndRender(step = 1) {
+  if (!state.contribs || !state.theta || !state.selDim) {
+    drawPlaceholder(); return;
+  }
+  const slRho = parseFloat(document.getElementById('sl-rho').value);
+  const slVx  = parseFloat(document.getElementById('sl-vx').value);
+  const slBy  = parseFloat(document.getElementById('sl-by').value);
+
+  const N       = state.N;
+  const H       = state.contribH;
+  const W       = state.contribW;
+  const ell     = state.paramLengths;
+  const tStar   = toNorm(slRho, slVx, slBy);
+  const preScale = Array.isArray(state.preScale)
+    ? (state.preScale[DIM_IDX[state.selDim]] ?? 1)
+    : (state.preScale || 1);
+
+  // Kernel weights: w_i = parameter_os * exp(-0.5 * sum((t*_d - t_i_d)^2 / ell_d^2))
+  const wts = new Float64Array(N);
+  for (let i = 0; i < N; i++) {
+    let d2 = 0;
+    for (let d = 0; d < 3; d++) {
+      const diff = (tStar[d] - state.theta[i*3+d]) / ell[d];
+      d2 += diff * diff;
+    }
+    wts[i] = state.parameterOs * Math.exp(-0.5 * d2);
+  }
+
+  // Weighted sum over (optionally downsampled) grid
+  const Hd = Math.ceil(H / step);
+  const Wd = Math.ceil(W / step);
+  const pixelsDs = Hd * Wd;
+  const result = new Float64Array(pixelsDs);
+  for (let i = 0; i < N; i++) {
+    const wi   = wts[i];
+    const base = i * H * W;
+    let jd = 0;
+    for (let r = 0; r < H; r += step) {
+      for (let c = 0; c < W; c += step) {
+        result[jd++] += wi * state.contribs[base + r * W + c];
+      }
+    }
+  }
+
+  // Scale and add background
+  const bg    = computeBackground(slRho, slVx, slBy);
+  const bgVal = bg[DIM_IDX[state.selDim]];
+  for (let j = 0; j < pixelsDs; j++) {
+    result[j] = result[j] * preScale + bgVal;
+  }
+
+  // ── 3 nearest training points ─────────────────────────────────────────────
+  const dists = new Array(N);
+  for (let i = 0; i < N; i++) {
+    let d2 = 0;
+    for (let d = 0; d < 3; d++) {
+      const diff = (tStar[d] - state.theta[i*3+d]) / ell[d];
+      d2 += diff * diff;
+    }
+    dists[i] = {i, d2};
+  }
+  dists.sort((a, b) => a.d2 - b.d2);
+  const nearest3 = dists.slice(0, 3).map(x => x.i);
+
+  const ySlices = [];
+  if (state.yContribs) {
+    for (let k = 0; k < 3; k++) {
+      const idx  = nearest3[k];
+      const base   = idx * H * W;
+      const tRho   = state.theta[idx*3+0] * 10;
+      const tVx    = state.theta[idx*3+1] * 1000;
+      const tBy    = state.theta[idx*3+2] * 10;
+      const bgTVal = computeBackground(tRho, tVx, tBy)[DIM_IDX[state.selDim]];
+      const ySlice = new Float64Array(pixelsDs);
+      let jd = 0;
+      for (let r = 0; r < H; r += step) {
+        for (let c = 0; c < W; c += step) {
+          ySlice[jd++] = state.yContribs[base + r * W + c] + bgTVal;
+        }
+      }
+      ySlices.push(ySlice);
+    }
+  }
+
+  // ── Nearest test point ────────────────────────────────────────────────────
+  let testSlice = null, nearestTestK = -1;
+  if (state.testContribs && state.testTheta && state.testM > 0) {
+    let bestD2 = Infinity;
+    for (let i = 0; i < state.testM; i++) {
+      let d2 = 0;
+      for (let d = 0; d < 3; d++) {
+        const diff = (tStar[d] - state.testTheta[i*3+d]) / ell[d];
+        d2 += diff * diff;
+      }
+      if (d2 < bestD2) { bestD2 = d2; nearestTestK = i; }
+    }
+    testSlice = new Float64Array(pixelsDs);
+    const base = nearestTestK * H * W;
+    let jd = 0;
+    for (let r = 0; r < H; r += step) {
+      for (let c = 0; c < W; c += step) {
+        testSlice[jd++] = state.testContribs[base + r * W + c];
+      }
+    }
+  }
+
+  // Colour range — shared (pooled) or per-panel depending on toggle
+  const finiteRange = arr => {
+    const finite = [];
+    for (let i = 0; i < arr.length; i++) { if (isFinite(arr[i])) finite.push(arr[i]); }
+    finite.sort((a, b) => a - b);
+    return finite.length ? [finite[0], finite[finite.length - 1]] : [0, 1];
+  };
+
+  let vminPred, vmaxPred, vminY = [], vmaxY = [], vminTest, vmaxTest;
+  const poolRange = arrays => {
+    const pooled = [];
+    for (const a of arrays) { for (let i = 0; i < a.length; i++) { if (isFinite(a[i])) pooled.push(a[i]); } }
+    pooled.sort((a, b) => a - b);
+    return pooled.length ? [pooled[0], pooled[pooled.length - 1]] : [0, 1];
+  };
+  if (state.syncColorbar === 'all') {
+    const [vmin, vmax] = poolRange([result, ...ySlices, ...(testSlice ? [testSlice] : [])]);
+    vminPred = vmin; vmaxPred = vmax;
+    vminTest = vmin; vmaxTest = vmax;
+    for (let k = 0; k < ySlices.length; k++) { vminY[k] = vmin; vmaxY[k] = vmax; }
+  } else if (state.syncColorbar === 'pred-test') {
+    const [vmin, vmax] = poolRange([result, ...(testSlice ? [testSlice] : [])]);
+    vminPred = vmin; vmaxPred = vmax;
+    vminTest = vmin; vmaxTest = vmax;
+    for (let k = 0; k < ySlices.length; k++) { vminY[k] = vmin; vmaxY[k] = vmax; }
+  } else {
+    [vminPred, vmaxPred] = finiteRange(result);
+    if (testSlice) [vminTest, vmaxTest] = finiteRange(testSlice);
+    for (let k = 0; k < ySlices.length; k++) { [vminY[k], vmaxY[k]] = finiteRange(ySlices[k]); }
+  }
+
+  drawCanvas(result, Hd, Wd, vminPred, vmaxPred, 'plot-canvas', step);
+  drawColorbar(vminPred, vmaxPred, 'colorbar-canvas', 'cb-max', 'cb-min');
+  document.getElementById('placeholder').style.display = 'none';
+  document.getElementById('pred-params').textContent =
+    `ρ ${slRho.toFixed(1)} cm⁻³ · Vx ${Math.round(slVx)} km/s · By ${slBy.toFixed(2)} nT`;
+  hideRenderOverlay();
+
+  if (testSlice) {
+    const tRho = state.testTheta[nearestTestK*3+0] * 10;
+    const tVx  = state.testTheta[nearestTestK*3+1] * 1000;
+    const tBy  = state.testTheta[nearestTestK*3+2] * 10;
+    drawCanvas(testSlice, Hd, Wd, vminTest, vmaxTest, 'test-canvas', step);
+    drawColorbar(vminTest, vmaxTest, 'colorbar-canvas-test', 'cb-max-test', 'cb-min-test');
+    document.getElementById('placeholder-test').style.display = 'none';
+    document.getElementById('test-params').textContent =
+      `ρ ${tRho.toFixed(1)} cm⁻³ · Vx ${Math.round(tVx)} km/s · By ${tBy.toFixed(2)} nT (k=${nearestTestK})`;
+  }
+
+  for (let k = 0; k < ySlices.length; k++) {
+    const idx  = nearest3[k];
+    const pRho = state.theta[idx*3+0] * 10;
+    const pVx  = state.theta[idx*3+1] * 1000;
+    const pBy  = state.theta[idx*3+2] * 10;
+    drawCanvas(ySlices[k], Hd, Wd, vminY[k], vmaxY[k], `plot-canvas-y${k}`, step);
+    drawColorbar(vminY[k], vmaxY[k], `colorbar-canvas-y${k}`, `cb-max-y${k}`, `cb-min-y${k}`);
+    document.getElementById(`placeholder-y${k}`).style.display = 'none';
+    document.getElementById(`y-label${k}`).textContent = `Nearest θ ${k+1} (i=${idx}, w=${wts[idx].toFixed(3)})`;
+    document.getElementById(`y-params-${k}`).textContent =
+      `ρ ${pRho.toFixed(1)} cm⁻³ · Vx ${Math.round(pVx)} km/s · By ${pBy.toFixed(2)} nT`;
+  }
+
+  drawParamPlots(tStar, new Set(nearest3), nearestTestK);
+}
+
+// ── Canvas rendering ─────────────────────────────────────────────────────────
+
+function drawCanvas(values, Hd, Wd, vmin, vmax, canvasId, step = 1) {
+  const canvas = document.getElementById(canvasId);
+  // Always render at full resolution to avoid layout reflow from size changes.
+  // For step>1, each sampled pixel is expanded to a step×step block in ImageData.
+  const H = Hd * step;
+  const W = Wd * step;
+  if (canvas.width !== W || canvas.height !== H) {
+    canvas.width  = W;
+    canvas.height = H;
+  }
+  const ctx   = canvas.getContext('2d');
+  const img   = ctx.createImageData(W, H);
+  const range = vmax > vmin ? vmax - vmin : 1;
+  const d     = img.data;
+  for (let r = 0; r < Hd; r++) {
+    for (let c = 0; c < Wd; c++) {
+      const raw = values[r * Wd + c];
+      const t   = isFinite(raw) ? Math.max(0, Math.min(1, (raw - vmin) / range)) : 0;
+      const [cr,cg,cb] = sampleColormap(t, VIRIDIS);
+      for (let dr = 0; dr < step; dr++) {
+        for (let dc = 0; dc < step; dc++) {
+          const px = ((r * step + dr) * W + (c * step + dc)) * 4;
+          d[px]   = cr;
+          d[px+1] = cg;
+          d[px+2] = cb;
+          d[px+3] = 255;
+        }
+      }
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+function drawColorbar(vmin, vmax, canvasId, maxId, minId) {
+  const canvas = document.getElementById(canvasId);
+  const h = canvas.height;
+  const ctx = canvas.getContext('2d');
+  for (let y = 0; y < h; y++) {
+    const t = 1 - y / (h - 1);  // top = max, bottom = min
+    const [r,g,b] = sampleColormap(t, VIRIDIS);
+    ctx.fillStyle = `rgb(${r},${g},${b})`;
+    ctx.fillRect(0, y, 18, 1);
+  }
+  const fmt = v => {
+    if (Math.abs(v) >= 100 || (Math.abs(v) < 0.01 && v !== 0))
+      return v.toExponential(2);
+    return v.toFixed(3);
+  };
+  document.getElementById(maxId).textContent = fmt(vmax);
+  document.getElementById(minId).textContent = fmt(vmin);
+}
+
+function drawPlaceholder() {
+  const clearCanvas = id => {
+    const c = document.getElementById(id);
+    c.getContext('2d').clearRect(0, 0, c.width, c.height);
+  };
+  clearCanvas('plot-canvas');
+  document.getElementById('placeholder').style.display = 'flex';
+  document.getElementById('cb-max').textContent = '—';
+  document.getElementById('cb-min').textContent = '—';
+  clearCanvas('test-canvas');
+  document.getElementById('placeholder-test').style.display = 'flex';
+  document.getElementById('cb-max-test').textContent = '—';
+  document.getElementById('cb-min-test').textContent = '—';
+  for (let k = 0; k < 3; k++) {
+    clearCanvas(`plot-canvas-y${k}`);
+    document.getElementById(`placeholder-y${k}`).style.display = 'flex';
+    document.getElementById(`cb-max-y${k}`).textContent = '—';
+    document.getElementById(`cb-min-y${k}`).textContent = '—';
+  }
+  hideRenderOverlay();
+}
+
+// ── Parameter space plots ────────────────────────────────────────────────────
+
+const PARAM_AXES = [
+  { name: 'ρ',  unit: 'cm⁻³', slMin: 2,   slMax: 10,  toNorm: v => v / 10,   toPhys: n => n * 10,   fmt: v => v.toFixed(1) + ' cm⁻³', slId: 'sl-rho', valId: 'val-rho' },
+  { name: 'Vx', unit: 'km/s', slMin: 300, slMax: 700, toNorm: v => v / 1000, toPhys: n => n * 1000, fmt: v => Math.round(v) + ' km/s',  slId: 'sl-vx',  valId: 'val-vx'  },
+  { name: 'By', unit: 'nT',   slMin: -10, slMax: 10,  toNorm: v => v / 10,   toPhys: n => n * 10,   fmt: v => v.toFixed(2) + ' nT',    slId: 'sl-by',  valId: 'val-by'  },
+];
+const PARAM_PAIRS = [[0,1],[0,2],[1,2]];
+
+function drawParamPlots(tStar, nearest3Set, nearestTestK) {
+  // Gray background points depend on mode; orange+red are always shown
+  const isTest  = state.pointMode === 'test';
+  const bgTheta = isTest ? state.testTheta : state.theta;
+  const bgN     = isTest ? state.testM     : state.N;
+  if (!bgTheta || bgN === 0) return;
+
+  if (!tStar) {
+    const slRho = parseFloat(document.getElementById('sl-rho').value);
+    const slVx  = parseFloat(document.getElementById('sl-vx').value);
+    const slBy  = parseFloat(document.getElementById('sl-by').value);
+    tStar = toNorm(slRho, slVx, slBy);
+  }
+
+  const ell = state.paramLengths || [1, 1, 1];
+
+  // Always compute 3 nearest training points (orange)
+  if (!nearest3Set && state.theta && state.N > 0) {
+    const dists = [];
+    for (let i = 0; i < state.N; i++) {
+      let d2 = 0;
+      for (let d = 0; d < 3; d++) {
+        const diff = (tStar[d] - state.theta[i*3+d]) / ell[d];
+        d2 += diff * diff;
+      }
+      dists.push({ i, d2 });
+    }
+    dists.sort((a, b) => a.d2 - b.d2);
+    nearest3Set = new Set(dists.slice(0, 3).map(x => x.i));
+  }
+  nearest3Set = nearest3Set || new Set();
+
+  // Always compute 1 nearest test point (red)
+  if (nearestTestK === undefined && state.testTheta && state.testM > 0) {
+    let bestD2 = Infinity, bestK = -1;
+    for (let i = 0; i < state.testM; i++) {
+      let d2 = 0;
+      for (let d = 0; d < 3; d++) {
+        const diff = (tStar[d] - state.testTheta[i*3+d]) / ell[d];
+        d2 += diff * diff;
+      }
+      if (d2 < bestD2) { bestD2 = d2; bestK = i; }
+    }
+    nearestTestK = bestK;
+  }
+  if (nearestTestK === undefined) nearestTestK = -1;
+
+  for (let p = 0; p < 3; p++) {
+    const [dx, dy] = PARAM_PAIRS[p];
+    drawMarginal(document.getElementById(`param-plot-${p}`), dx, dy, tStar,
+                 bgTheta, bgN, nearest3Set, nearestTestK);
+  }
+}
+
+function drawMarginal(canvas, dx, dy, tStar, bgTheta, bgN, nearest3Set, nearestTestK) {
+  const W = canvas.width, H = canvas.height;
+  const pad = { top: 8, right: 8, bottom: 22, left: 30 };
+  const ctx = canvas.getContext('2d');
+
+  const ax = PARAM_AXES[dx], ay = PARAM_AXES[dy];
+  const xMin = ax.toNorm(ax.slMin), xMax = ax.toNorm(ax.slMax);
+  const yMin = ay.toNorm(ay.slMin), yMax = ay.toNorm(ay.slMax);
+  const plotW = W - pad.left - pad.right;
+  const plotH = H - pad.top - pad.bottom;
+
+  const pxf = v => pad.left + (v - xMin) / (xMax - xMin) * plotW;
+  const pyf = v => H - pad.bottom - (v - yMin) / (yMax - yMin) * plotH;
+
+  ctx.fillStyle = '#17171a';
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#1c1c20';
+  ctx.fillRect(pad.left, pad.top, plotW, plotH);
+
+  const isTest = state.pointMode === 'test';
+
+  // Gray: background set (mode-dependent), excluding any highlighted points
+  for (let i = 0; i < bgN; i++) {
+    if (!isTest && nearest3Set.has(i)) continue;  // exclude orange train points in train mode
+    if (isTest && i === nearestTestK) continue;   // exclude red test point in test mode
+    ctx.beginPath();
+    ctx.arc(pxf(bgTheta[i*3+dx]), pyf(bgTheta[i*3+dy]), 2.5, 0, 2*Math.PI);
+    ctx.fillStyle = '#555560';
+    ctx.fill();
+  }
+
+  // Orange: 3 nearest training points (always, from state.theta)
+  if (state.theta) {
+    for (const i of nearest3Set) {
+      ctx.beginPath();
+      ctx.arc(pxf(state.theta[i*3+dx]), pyf(state.theta[i*3+dy]), 4, 0, 2*Math.PI);
+      ctx.fillStyle = '#f59e0b';
+      ctx.fill();
+    }
+  }
+
+  // Red: nearest test point (always, from state.testTheta)
+  if (nearestTestK >= 0 && state.testTheta) {
+    ctx.beginPath();
+    ctx.arc(pxf(state.testTheta[nearestTestK*3+dx]), pyf(state.testTheta[nearestTestK*3+dy]), 4, 0, 2*Math.PI);
+    ctx.fillStyle = '#ef4444';
+    ctx.fill();
+  }
+
+  // Green: current slider position
+  ctx.beginPath();
+  ctx.arc(pxf(tStar[dx]), pyf(tStar[dy]), 5, 0, 2*Math.PI);
+  ctx.fillStyle = '#7ee8a2';
+  ctx.fill();
+
+  // Axis labels
+  ctx.fillStyle = '#888890';
+  ctx.font = '9px JetBrains Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(`${ax.name} (${ax.unit})`, pad.left + plotW / 2, H - 5);
+  ctx.save();
+  ctx.translate(10, pad.top + plotH / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText(`${ay.name} (${ay.unit})`, 0, 0);
+  ctx.restore();
+}
+
+// ── UI ───────────────────────────────────────────────────────────────────────
+
+// Arrow-key navigation through the point list
+let arrowNavActive = false;
+let arrowNavIdx    = -1;
+
+function selectPointByIdx(idx) {
+  const isTest = state.pointMode === 'test';
+  const theta  = isTest ? state.testTheta : state.theta;
+  const N      = isTest ? state.testM     : state.N;
+  if (!theta || idx < 0 || idx >= N) return;
+  arrowNavIdx = idx;
+  const items = document.querySelectorAll('.theta-item');
+  for (const b of items) b.classList.remove('active');
+  if (items[idx]) {
+    items[idx].classList.add('active');
+    items[idx].scrollIntoView({ block: 'nearest' });
+  }
+  const rho = theta[idx*3+0] * 10;
+  const vx  = theta[idx*3+1] * 1000;
+  const by  = theta[idx*3+2] * 10;
+  document.getElementById('sl-rho').value = rho;
+  document.getElementById('sl-vx').value  = vx;
+  document.getElementById('sl-by').value  = by;
+  document.getElementById('val-rho').textContent = rho.toFixed(1) + ' cm⁻³';
+  document.getElementById('val-vx').textContent  = Math.round(vx) + ' km/s';
+  document.getElementById('val-by').textContent  = by.toFixed(2) + ' nT';
+  state.slRho = rho; state.slVx = vx; state.slBy = by;
+  computeAndRender();
+}
+
+function buildPointList() {
+  arrowNavActive = false;
+  arrowNavIdx    = -1;
+  const container = document.getElementById('theta-list');
+  const label     = document.getElementById('point-list-label');
+  container.innerHTML = '';
+  const isTest = state.pointMode === 'test';
+  label.textContent = isTest ? 'Test Points' : 'Training Points';
+  const theta = isTest ? state.testTheta : state.theta;
+  const N     = isTest ? state.testM     : state.N;
+  if (!theta || N === 0) {
+    container.innerHTML = `<span style="font-size:11px;color:var(--text-dim)">${isTest ? 'no test data loaded' : 'no model loaded'}</span>`;
+    return;
+  }
+  for (let i = 0; i < N; i++) {
+    const rho = (isTest ? state.testTheta : state.theta)[i*3+0] * 10;
+    const vx  = (isTest ? state.testTheta : state.theta)[i*3+1] * 1000;
+    const by  = (isTest ? state.testTheta : state.theta)[i*3+2] * 10;
+    const btn = document.createElement('button');
+    btn.className = 'theta-item';
+    btn.dataset.thetaIdx = i;
+    btn.innerHTML =
+      `<span style="color:var(--muted);min-width:22px;display:inline-block;margin-right:4px">#${i}</span>` +
+      `ρ ${rho.toFixed(1)} · Vx ${Math.round(vx)} · By ${by.toFixed(2)}`;
+    btn.onclick = () => { arrowNavActive = true; selectPointByIdx(i); };
+    container.appendChild(btn);
+  }
+}
+
+function setPointMode(mode) {
+  state.pointMode = mode;
+  arrowNavActive = false;
+  arrowNavIdx    = -1;
+  document.getElementById('mode-train').classList.toggle('active', mode === 'train');
+  document.getElementById('mode-test').classList.toggle('active', mode === 'test');
+  buildPointList();
+  drawParamPlots();
+}
+
+function buildPills() {
+  // Dim pills
+  const dimContainer = document.getElementById('dim-pills');
+  dimContainer.innerHTML = '';
+  for (const dim of DIM_NAMES) {
+    const btn = document.createElement('button');
+    btn.className = 'pill' + (state.availDims.includes(dim) ? '' : ' disabled');
+    btn.textContent = DIM_DISPLAY[DIM_NAMES.indexOf(dim)];
+    if (state.availDims.includes(dim)) {
+      btn.onclick = () => selectDim(dim);
+      if (dim === state.selDim) btn.classList.add('active');
+    }
+    dimContainer.appendChild(btn);
+  }
+
+  // Axis pills
+  const axisContainer = document.getElementById('axis-pills');
+  axisContainer.innerHTML = '';
+  for (const axis of ['x1','x2','x3']) {
+    const btn = document.createElement('button');
+    btn.className = 'pill' + (state.availAxes.includes(axis) ? '' : ' disabled');
+    btn.textContent = axis;
+    if (state.availAxes.includes(axis)) {
+      btn.onclick = () => selectAxis(axis);
+      if (axis === state.selAxis) btn.classList.add('active');
+    }
+    axisContainer.appendChild(btn);
+  }
+
+  buildPosPills();
+}
+
+function buildPosPills() {
+  const container = document.getElementById('pos-pills');
+  container.innerHTML = '';
+  const ak = state.selDim && state.selAxis ? `${state.selDim}_${state.selAxis}` : null;
+  const positions = (ak && state.posMap[ak]) || [];
+  if (positions.length === 0) {
+    const span = document.createElement('span');
+    span.className = 'pill disabled';
+    span.textContent = '—';
+    container.appendChild(span);
+    return;
+  }
+  for (const coord of positions) {
+    const btn = document.createElement('button');
+    btn.className = 'pill' + (coord === state.selPos ? ' active' : '');
+    btn.textContent = parseFloat(coord).toFixed(2);
+    btn.onclick = () => selectPos(coord);
+    container.appendChild(btn);
+  }
+}
+
+async function selectDim(dim) {
+  if (dim === state.selDim) return;
+  state.selDim = dim;
+  // If current axis has this dim, keep it; otherwise pick first available
+  const ak = `${dim}_${state.selAxis}`;
+  if (!state.posMap[ak] && state.availAxes.length > 0) {
+    state.selAxis = state.availAxes[0];
+  }
+  const ak2 = `${dim}_${state.selAxis}`;
+  const positions = state.posMap[ak2] || [];
+  if (positions.length === 0) {
+    state.selPos = null;
+  } else if (state.selPos !== null && !positions.includes(state.selPos)) {
+    const cur = parseFloat(state.selPos);
+    state.selPos = positions.reduce((best, p) =>
+      Math.abs(parseFloat(p) - cur) < Math.abs(parseFloat(best) - cur) ? p : best
+    );
+  } else if (!positions.includes(state.selPos)) {
+    state.selPos = positions[0];
+  }
+  buildPills();
+  if (state.selPos) { await loadContribs(); computeAndRender(); }
+}
+
+async function selectAxis(axis) {
+  if (axis === state.selAxis) return;
+  state.selAxis = axis;
+  const ak = `${state.selDim}_${axis}`;
+  const positions = state.posMap[ak] || [];
+  if (positions.length === 0) {
+    state.selPos = null;
+  } else if (state.selPos !== null && !positions.includes(state.selPos)) {
+    const cur = parseFloat(state.selPos);
+    state.selPos = positions.reduce((best, p) =>
+      Math.abs(parseFloat(p) - cur) < Math.abs(parseFloat(best) - cur) ? p : best
+    );
+  } else if (!positions.includes(state.selPos)) {
+    state.selPos = positions[0];
+  }
+  buildPills();
+  if (state.selPos) { await loadContribs(); computeAndRender(); }
+}
+
+async function selectPos(coord) {
+  if (coord === state.selPos) return;
+  state.selPos = coord;
+  buildPosPills();
+  await loadContribs();
+  computeAndRender();
+}
+
+function updateSliderDisplay() {
+  document.getElementById('val-rho').textContent =
+    parseFloat(document.getElementById('sl-rho').value).toFixed(1) + ' cm⁻³';
+  document.getElementById('val-vx').textContent =
+    parseFloat(document.getElementById('sl-vx').value).toFixed(0) + ' km/s';
+  document.getElementById('val-by').textContent =
+    parseFloat(document.getElementById('sl-by').value).toFixed(2) + ' nT';
+  if (state.contribs) computeAndRender(4);
+  else if (state.theta && state.N > 0) drawParamPlots();
+}
+
+function onSliderRelease() {
+  state.slRho = parseFloat(document.getElementById('sl-rho').value);
+  state.slVx  = parseFloat(document.getElementById('sl-vx').value);
+  state.slBy  = parseFloat(document.getElementById('sl-by').value);
+  computeAndRender();
+}
+
+function showRenderOverlay() {
+  document.getElementById('render-overlay').classList.add('visible');
+}
+function hideRenderOverlay() {
+  document.getElementById('render-overlay').classList.remove('visible');
+}
+
+function toggleSyncColorbar() {
+  const modes = ['all', 'pred-test', 'individual'];
+  const labels = { all: 'Colorbar: All Synced', 'pred-test': 'Colorbar: Pred+Test', individual: 'Colorbar: Individual' };
+  state.syncColorbar = modes[(modes.indexOf(state.syncColorbar) + 1) % modes.length];
+  document.getElementById('colorbar-sync-btn').textContent = labels[state.syncColorbar];
+  if (state.contribs) computeAndRender();
+}
+
+function enableSliders() {
+  document.getElementById('sl-rho').disabled = false;
+  document.getElementById('sl-vx').disabled  = false;
+  document.getElementById('sl-by').disabled  = false;
+}
+
+function showLoading(msg) {
+  document.getElementById('loading-text').textContent = msg || 'Loading…';
+  document.getElementById('loading').classList.add('visible');
+}
+function hideLoading() {
+  document.getElementById('loading').classList.remove('visible');
+}
+
+// ── Param plot click ─────────────────────────────────────────────────────────
+
+function onParamPlotClick(e, plotIdx) {
+  const isTest = state.pointMode === 'test';
+  const theta  = isTest ? state.testTheta : state.theta;
+  const N      = isTest ? state.testM     : state.N;
+  if (!theta || N === 0) return;
+
+  const canvas = e.currentTarget;
+  const rect   = canvas.getBoundingClientRect();
+  const scaleX = canvas.width  / rect.width;
+  const scaleY = canvas.height / rect.height;
+  const clickX = (e.clientX - rect.left) * scaleX;
+  const clickY = (e.clientY - rect.top)  * scaleY;
+
+  const [dx, dy] = PARAM_PAIRS[plotIdx];
+  const pad = { top: 8, right: 8, bottom: 22, left: 30 };
+  const W = canvas.width, H = canvas.height;
+  const plotW = W - pad.left - pad.right;
+  const plotH = H - pad.top  - pad.bottom;
+
+  const ax = PARAM_AXES[dx], ay = PARAM_AXES[dy];
+  const xMin = ax.toNorm(ax.slMin), xMax = ax.toNorm(ax.slMax);
+  const yMin = ay.toNorm(ay.slMin), yMax = ay.toNorm(ay.slMax);
+
+  const normX = xMin + (clickX - pad.left) / plotW * (xMax - xMin);
+  const normY = yMin + (H - pad.bottom - clickY) / plotH * (yMax - yMin);
+
+  // Nearest point in the active set
+  let bestI = 0, bestD2 = Infinity;
+  for (let i = 0; i < N; i++) {
+    const ex = theta[i*3+dx] - normX;
+    const ey = theta[i*3+dy] - normY;
+    const d2 = ex*ex + ey*ey;
+    if (d2 < bestD2) { bestD2 = d2; bestI = i; }
+  }
+
+  const rho = Math.min(10,  Math.max(2,    theta[bestI*3+0] * 10));
+  const vx  = Math.min(700, Math.max(300,  theta[bestI*3+1] * 1000));
+  const by  = Math.min(10,  Math.max(-10,  theta[bestI*3+2] * 10));
+
+  document.getElementById('sl-rho').value = rho;
+  document.getElementById('sl-vx').value  = vx;
+  document.getElementById('sl-by').value  = by;
+  document.getElementById('val-rho').textContent = rho.toFixed(1) + ' cm⁻³';
+  document.getElementById('val-vx').textContent  = Math.round(vx) + ' km/s';
+  document.getElementById('val-by').textContent  = by.toFixed(2) + ' nT';
+  computeAndRender();
+}
+
+// ── Param plot drag ──────────────────────────────────────────────────────────
+
+function updateFromPointerPos(e, canvas, plotIdx, preview) {
+  const rect   = canvas.getBoundingClientRect();
+  const scaleX = canvas.width  / rect.width;
+  const scaleY = canvas.height / rect.height;
+  const mouseX = (e.clientX - rect.left) * scaleX;
+  const mouseY = (e.clientY - rect.top)  * scaleY;
+
+  const [dx, dy] = PARAM_PAIRS[plotIdx];
+  const pad = { top: 8, right: 8, bottom: 22, left: 30 };
+  const plotW = canvas.width  - pad.left - pad.right;
+  const plotH = canvas.height - pad.top  - pad.bottom;
+
+  const ax = PARAM_AXES[dx], ay = PARAM_AXES[dy];
+  const xNorm = Math.min(ax.toNorm(ax.slMax), Math.max(ax.toNorm(ax.slMin),
+    ax.toNorm(ax.slMin) + (mouseX - pad.left)  / plotW * (ax.toNorm(ax.slMax) - ax.toNorm(ax.slMin))));
+  const yNorm = Math.min(ay.toNorm(ay.slMax), Math.max(ay.toNorm(ay.slMin),
+    ay.toNorm(ay.slMin) + (canvas.height - pad.bottom - mouseY) / plotH * (ay.toNorm(ay.slMax) - ay.toNorm(ay.slMin))));
+
+  const physX = Math.min(ax.slMax, Math.max(ax.slMin, ax.toPhys(xNorm)));
+  const physY = Math.min(ay.slMax, Math.max(ay.slMin, ay.toPhys(yNorm)));
+
+  document.getElementById(ax.slId).value      = physX;
+  document.getElementById(ax.valId).textContent = ax.fmt(physX);
+  document.getElementById(ay.slId).value      = physY;
+  document.getElementById(ay.valId).textContent = ay.fmt(physY);
+
+  if (preview) {
+    if (state.contribs) computeAndRender(4);
+    else drawParamPlots();
+  } else {
+    state.slRho = parseFloat(document.getElementById('sl-rho').value);
+    state.slVx  = parseFloat(document.getElementById('sl-vx').value);
+    state.slBy  = parseFloat(document.getElementById('sl-by').value);
+    computeAndRender();
+  }
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+
+document.getElementById('folder-input').addEventListener('change', e => {
+  onFolderUpload(e.target.files);
+  e.target.value = '';
+});
+
+for (let p = 0; p < 3; p++) {
+  const canvas = document.getElementById(`param-plot-${p}`);
+  canvas.style.cursor = 'crosshair';
+  let startX = 0, startY = 0, didDrag = false;
+  const DRAG_THRESHOLD = 4;
+
+  canvas.addEventListener('pointerdown', e => {
+    startX = e.clientX; startY = e.clientY; didDrag = false;
+    canvas.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+
+  canvas.addEventListener('pointermove', e => {
+    if (!e.buttons) return;
+    if (!didDrag && Math.hypot(e.clientX - startX, e.clientY - startY) < DRAG_THRESHOLD) return;
+    didDrag = true;
+    updateFromPointerPos(e, canvas, p, true);
+  });
+
+  canvas.addEventListener('pointerup', e => {
+    if (didDrag) {
+      updateFromPointerPos(e, canvas, p, false);
+    } else {
+      onParamPlotClick(e, p);
+    }
+    didDrag = false;
+  });
+}
+
+// Arrow-key navigation: cycle through the active point list
+document.addEventListener('keydown', e => {
+  if (!arrowNavActive) return;
+  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+  e.preventDefault();
+  const isTest = state.pointMode === 'test';
+  const N = isTest ? state.testM : state.N;
+  if (!N) return;
+  const next = e.key === 'ArrowDown'
+    ? (arrowNavIdx + 1) % N
+    : (arrowNavIdx - 1 + N) % N;
+  selectPointByIdx(next);
+});
+
+// Deactivate arrow nav when clicking outside the point list
+document.addEventListener('pointerdown', e => {
+  if (!e.target.closest('#theta-list')) arrowNavActive = false;
+}, true);
+
+drawPlaceholder();
+</script>
+</body>
+</html>

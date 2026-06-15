@@ -1,0 +1,321 @@
+---
+title: Europa Visualization
+permalink: /europa_viz
+---
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Europa Visualization</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600&family=Syne:wght@400;700;800&display=swap');
+
+  :root {
+    --bg: #0e0e10;
+    --surface: #17171a;
+    --panel: #1c1c20;
+    --border: #2a2a2f;
+    --muted: #555560;
+    --text: #e8e8ed;
+    --text-dim: #888890;
+    --accent: #7ee8a2;
+    --radius: 6px;
+    --mono: 'JetBrains Mono', monospace;
+    --display: 'Syne', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* ── Header ── */
+  header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .logo {
+    font-family: var(--display);
+    font-weight: 800;
+    font-size: 15px;
+    letter-spacing: -0.5px;
+    color: var(--accent);
+  }
+  .logo span { color: var(--text-dim); font-weight: 400; }
+
+  #cache-status {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-left: auto;
+  }
+  #cache-status.loaded { color: var(--text); }
+
+  #btn-clear {
+    font-size: 11px;
+    padding: 3px 9px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-family: var(--mono);
+    transition: all 0.12s;
+    display: none;
+  }
+  #btn-clear:hover { color: var(--text); border-color: var(--muted); }
+  #btn-clear.visible { display: inline-block; }
+
+  /* ── Main ── */
+  main {
+    flex: 1;
+    padding: 48px 24px;
+    max-width: 900px;
+    margin: 0 auto;
+    width: 100%;
+  }
+
+  .hero {
+    margin-bottom: 48px;
+  }
+
+  .hero-title {
+    font-family: var(--display);
+    font-weight: 800;
+    font-size: 32px;
+    letter-spacing: -1px;
+    color: var(--text);
+    line-height: 1.1;
+    margin-bottom: 12px;
+  }
+  .hero-title em { color: var(--accent); font-style: normal; }
+
+  .hero-sub {
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.7;
+    max-width: 480px;
+  }
+
+  /* ── Cache banner ── */
+  .cache-banner {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 14px;
+    margin-bottom: 32px;
+    font-size: 11px;
+  }
+  .cache-banner.visible { display: flex; }
+  .cache-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--accent);
+    flex-shrink: 0;
+  }
+  .cache-text { color: var(--text); flex: 1; }
+  .cache-clear-btn {
+    font-size: 10px;
+    padding: 2px 8px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    border-radius: 3px;
+    cursor: pointer;
+    font-family: var(--mono);
+    transition: all 0.12s;
+  }
+  .cache-clear-btn:hover { color: var(--text); border-color: var(--muted); }
+
+  /* ── Tool cards ── */
+  .tools-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 14px;
+  }
+
+  .tool-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    transition: border-color 0.15s, background 0.15s;
+    text-decoration: none;
+    color: inherit;
+  }
+  .tool-card:hover {
+    border-color: var(--muted);
+    background: var(--panel);
+  }
+
+  .tool-icon { font-size: 24px; line-height: 1; }
+
+  .tool-name {
+    font-family: var(--display);
+    font-weight: 800;
+    font-size: 14px;
+    color: var(--text);
+  }
+
+  .tool-desc {
+    font-size: 11px;
+    color: var(--text-dim);
+    line-height: 1.6;
+    flex: 1;
+  }
+
+  .tool-link {
+    font-size: 10px;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 4px;
+  }
+
+  /* ── Footer ── */
+  footer {
+    padding: 16px 24px;
+    border-top: 1px solid var(--border);
+    font-size: 10px;
+    color: var(--muted);
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Europa<span> Visualization</span></div>
+  <span id="cache-status">no data cached</span>
+</header>
+
+<main>
+  <div class="hero">
+    <div class="hero-title">Europa<br><em>Visualization Tools</em></div>
+    <div class="hero-sub">
+      Explore GP surrogate model results for Europa's magnetosphere.
+      Upload a results folder once — data is shared across all tools.
+    </div>
+  </div>
+
+  <div class="cache-banner" id="cache-banner">
+    <div class="cache-dot"></div>
+    <span class="cache-text" id="cache-banner-text">Data cached</span>
+    <button class="cache-clear-btn" onclick="clearCache()">clear</button>
+  </div>
+
+  <div class="tools-grid">
+    <a class="tool-card" href="/group_compare.html">
+      <div class="tool-icon">📊</div>
+      <div class="tool-name">Group Compare</div>
+      <div class="tool-desc">Compare metrics across experimental groups. View nrmse, mse, and kernel length scales as a function of training set size.</div>
+      <div class="tool-link">Open →</div>
+    </a>
+
+    <a class="tool-card" href="/deep_dive.html">
+      <div class="tool-icon">🔬</div>
+      <div class="tool-name">Deep Dive</div>
+      <div class="tool-desc">Explore a single group's training dynamics. View loss curves over iterations and visualise training points in 3D parameter space.</div>
+      <div class="tool-link">Open →</div>
+    </a>
+
+    <a class="tool-card" href="/image_compare.html">
+      <div class="tool-icon">🖼️</div>
+      <div class="tool-name">Image Compare</div>
+      <div class="tool-desc">Compare rendered MHD simulation images side-by-side across solar wind parameter configurations.</div>
+      <div class="tool-link">Open →</div>
+    </a>
+
+    <a class="tool-card" href="/predictive_mean.html">
+      <div class="tool-icon">🌊</div>
+      <div class="tool-name">Predictive Mean</div>
+      <div class="tool-desc">Real-time GP predictive mean at spatial cross-sections. Adjust solar wind parameters with sliders — ρ, Vx, By — and instantly see the weighted prediction.</div>
+      <div class="tool-link">Open →</div>
+    </a>
+  </div>
+</main>
+
+<footer>Europa GP Surrogate Modeling · Pleiss Lab</footer>
+
+<script>
+const ResultsStore = (() => {
+  const DB = 'europa-results', STORE = 'entries';
+  function open() {
+    return new Promise((res, rej) => {
+      const r = indexedDB.open(DB, 1);
+      r.onupgradeneeded = e => e.target.result.createObjectStore(STORE);
+      r.onsuccess = e => res(e.target.result);
+      r.onerror   = e => rej(e.target.error);
+    });
+  }
+  return {
+    async load() {
+      const db = await open();
+      return new Promise((res, rej) => {
+        const r = db.transaction(STORE,'readonly').objectStore(STORE).get('data');
+        r.onsuccess = e => { db.close(); res(e.target.result ?? null); };
+        r.onerror   = e => rej(e.target.error);
+      });
+    },
+    async clear() {
+      const db = await open();
+      return new Promise((res, rej) => {
+        const tx = db.transaction(STORE,'readwrite');
+        tx.objectStore(STORE).delete('data');
+        tx.oncomplete = () => { db.close(); res(); };
+        tx.onerror    = e => rej(e.target.error);
+      });
+    },
+  };
+})();
+
+async function clearCache() {
+  await ResultsStore.clear();
+  document.getElementById('cache-banner').classList.remove('visible');
+  document.getElementById('cache-status').textContent = 'no data cached';
+  document.getElementById('cache-status').classList.remove('loaded');
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    const cached = await ResultsStore.load();
+    if (cached?.entries?.length) {
+      const n      = cached.entries.length;
+      const groups = new Set(cached.entries.map(e => e.group)).size;
+      const ago    = Math.round((Date.now() - cached.savedAt) / 60000);
+      const agoStr = ago < 1 ? 'just now' : ago < 60 ? `${ago}m ago` : `${Math.round(ago/60)}h ago`;
+
+      const msg = `${groups} group${groups !== 1 ? 's' : ''} · ${n} file${n !== 1 ? 's' : ''} · saved ${agoStr}`;
+      document.getElementById('cache-status').textContent     = msg;
+      document.getElementById('cache-status').classList.add('loaded');
+      document.getElementById('cache-banner-text').textContent = msg;
+      document.getElementById('cache-banner').classList.add('visible');
+    }
+  } catch (_) {}
+});
+</script>
+</body>
+</html>
