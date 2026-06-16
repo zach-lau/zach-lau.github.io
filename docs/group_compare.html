@@ -608,7 +608,7 @@ permalink: /group_compare
 <header>
   <div class="logo">Group<span>Compare</span></div>
   <nav class="page-nav">
-    <a class="nav-link" href="/">home</a>
+    <a class="nav-link" href="/europa_viz.html">home</a>
     <a class="nav-link current" href="/group_compare.html">group compare</a>
     <a class="nav-link" href="/deep_dive.html">deep dive</a>
     <a class="nav-link" href="/image_compare.html">image compare</a>
@@ -827,7 +827,9 @@ const PALETTE = [
   '#a8d8ea', '#ffb347',
 ];
 
-const DIM_NAMES = ['Density', 'Vx', 'Vy', 'Vz', 'Bx', 'By', 'Bz'];
+const DIM_NAMES    = ['Density', 'Vx', 'Vy', 'Vz', 'Bx', 'By', 'Bz'];
+const THETA_AXES   = ['SW_n_cc', 'SW_V_mps', 'SW_By_T'];
+const SPATIAL_AXES = ['x1', 'x2', 'x3'];
 
 const DASH_PATTERNS = [
   [],
@@ -1164,6 +1166,14 @@ function getVisibleMetricDims() {
   return dims || maxDims;
 }
 
+function getDimLabel(dim) {
+  if (viewType === 'parameters') {
+    const axes = showMetric === 'parameter_lengths' ? THETA_AXES : SPATIAL_AXES;
+    return axes[dim] ?? `dim ${dim}`;
+  }
+  return DIM_NAMES[dim] ? `dim ${dim} (${DIM_NAMES[dim]})` : `dim ${dim}`;
+}
+
 function renderDimToggles() {
   const count     = allEntries.length ? getVisibleMetricDims() : maxDims;
   const container = document.getElementById('dim-toggles');
@@ -1172,7 +1182,7 @@ function renderDimToggles() {
   for (let i = 0; i < count; i++) {
     const btn = document.createElement('button');
     btn.className = 'dim-pill' + (dimVisible[i] ? ' active' : '');
-    btn.textContent = DIM_NAMES[i] ? `dim ${i} (${DIM_NAMES[i]})` : `dim ${i}`;
+    btn.textContent = getDimLabel(i);
     const dim = i;
     btn.addEventListener('click', () => {
       dimVisible[dim] = !dimVisible[dim];
@@ -1273,7 +1283,7 @@ function rebuildCharts() {
       card.dataset.dim = dim;
       if (!dimVisible[dim]) card.style.display = 'none';
       card.innerHTML = `
-        <div class="chart-title">${escHtml(metric)} · dim ${dim}${DIM_NAMES[dim] ? ` (${DIM_NAMES[dim]})` : ''}</div>
+        <div class="chart-title">${escHtml(metric)} · ${getDimLabel(dim)}</div>
         <div class="chart-wrap"><canvas id="${id}"></canvas></div>
       `;
       area.appendChild(card);
@@ -1638,7 +1648,7 @@ function renderTable() {
     // Header row
     const thead = document.createElement('thead');
     const hrow  = document.createElement('tr');
-    for (const label of ['Group', 'n', ...visibleDims.map(d => DIM_NAMES[d] ? `dim ${d} (${DIM_NAMES[d]})` : `dim ${d}`)]) {
+    for (const label of ['Group', 'n', ...visibleDims.map(d => getDimLabel(d))]) {
       const th = document.createElement('th');
       th.textContent = label;
       if (label !== 'Group') th.className = 'num';
